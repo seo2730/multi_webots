@@ -1,0 +1,3 @@
+[submodule "src/Webots-SummitXL"]
+	path = src/Webots-SummitXL
+	url = https://github.com/seo2730/Webots-SummitXL

@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  ros2_webots_node:
+    build: .
+    container_name: webots_ros2_final
+    volumes:
+      - ./src:/ros2_ws/src
+    network_mode: host
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - DISPLAY=:0
+      - WEBOTS_CONTROLLER_URL=tcp://host.docker.internal:1234
+    command: tail -f /dev/null
+    tty: true
