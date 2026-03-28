@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y locales && \
 ENV LANG=en_US.UTF-8
 
 # 3. ROS 2 Humble 레포지토리 추가 및 설치
-RUN apt-get update && apt-get install -y curl gnupg2 lsb-release net-tools iputils-ping netcat git software-properties-common
+RUN apt-get update && apt-get install -y curl gnupg2 lsb-release net-tools iputils-ping netcat git software-properties-common wget
 
 # 4. ROS 2 및 Webots 연동 패키지 설치
 RUN apt-get update && apt-get install -y \
@@ -29,6 +29,10 @@ RUN wget -q https://github.com/cyberbotics/webots/releases/download/R2025a/webot
     apt-get update && \
     apt-get install -y ./webots_2025a_amd64.deb && \
     rm webots_2025a_amd64.deb
+
+ENV WEBOTS_HOME=/usr/local/webots
+ENV PYTHONPATH=$WEBOTS_HOME/lib/controller/python:$PYTHONPATH
+ENV LD_LIBRARY_PATH=$WEBOTS_HOME/lib/controller:$LD_LIBRARY_PATH
 
 RUN add-apt-repository ppa:borglab/gtsam-release-4.1
 RUN apt install -y libgtsam-dev libgtsam-unstable-dev

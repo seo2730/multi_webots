@@ -5,13 +5,20 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 from webots_ros2_driver.webots_controller import WebotsController
 
+import xacro
+import xml.etree.ElementTree
+
 os.environ['USER'] = 'root'
 
 def generate_launch_description():
     package_dir = get_package_share_directory('webots_python')
-    ugv1_urdf_path = os.path.join(package_dir, 'urdf', 'SummitXlSteel.urdf')
-    robot_description = pathlib.Path(ugv1_urdf_path).read_text()
+    ugv1_urdf_path = os.path.join(package_dir, 'urdf', 'SummitXlSteel.urdf.xacro')
     spot_urdf_path = os.path.join(package_dir, 'urdf', 'Spot.urdf')
+
+    ugv1_description = xacro.process_file(
+        ugv1_urdf_path,
+        mappings={'namespace': 'ugv1'}
+    ).toxml()
 
     # 기존 webots_controller = WebotsController(...) 부분을 완전히 지우고 아래로 대체합니다.
     webots_ugv1_driver = Node(
@@ -22,8 +29,9 @@ def generate_launch_description():
         additional_env={'WEBOTS_CONTROLLER_URL': 'tcp://host.docker.internal:1234/ugv1',
         },
         parameters=[
-            {'robot_description': robot_description},
-            {'use_sim_time': True}
+            {'robot_description': ugv1_description},
+            {'use_sim_time': True},
+            # {'namespace': 'ugv1'}
         ]
     )
 
@@ -39,5 +47,7 @@ def generate_launch_description():
         ]
     )
 
-    return LaunchDescription([webots_ugv1_driver,
-                            webots_spot_driver])
+    return LaunchDescription([
+                              webots_ugv1_driver,
+                              webots_spot_driver
+                            ])

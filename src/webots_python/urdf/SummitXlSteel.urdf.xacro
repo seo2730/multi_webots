@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
 <robot name="ugv1" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:arg name="namespace" default="robot1"/>
   <link name="base_link">
     <visual>
       <origin xyz="0 0 0.3" rpy="0 0 0"/>
@@ -260,6 +261,8 @@
     <origin xyz="0 0 0.39062" rpy="0 0 0"/>
   </joint>
   <webots>
-    <plugin type="simulator.robot_driver.main" />
+    <plugin type="simulator.robot_driver.main">
+      <namespace>$(arg namespace)</namespace>
+    </plugin>
   </webots>
 </robot>
