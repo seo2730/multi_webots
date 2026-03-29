@@ -31,7 +31,7 @@ def generate_launch_description():
         parameters=[
             {'robot_description': ugv1_description},
             {'use_sim_time': True},
-            # {'namespace': 'ugv1'}
+            {'namespace': 'ugv1'}
         ]
     )
 
