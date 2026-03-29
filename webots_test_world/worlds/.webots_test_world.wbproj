@@ -1,0 +1,18 @@
+Webots Project File version R2025a
+perspectives: 000000ff00000000fd00000002000000010000045b0000042cfc0200000001fb0000001400540065007800740045006400690074006f007201000000130000042c0000003f00ffffff00000003000009fe000000fcfc0100000001fb0000001a0043006f006e0073006f006c00650041006c006c0041006c006c0100000000000009fe0000006900ffffff000005a10000042c00000001000000020000000100000008fc00000000
+simulationViewPerspectives: 000000ff000000010000000200000100000005620100000002010000000100
+sceneTreePerspectives: 000000ff00000001000000030000001c000003ef000000fa0100000002010000000200
+maximizedDockId: -1
+centralWidgetVisible: 1
+orthographicViewHeight: 1
+textFiles: -1
+consoles: Console:All:All
+renderingDevicePerspectives: Spot:left flank camera;0;0.597222;0;0
+renderingDevicePerspectives: Spot:left head camera;1;0.196936;0.720455;0.00992064
+renderingDevicePerspectives: Spot:rear camera;0;0.183333;0.401192;0.689815
+renderingDevicePerspectives: Spot:right flank camera;0;0.597222;0;0
+renderingDevicePerspectives: Spot:right head camera;1;0.171513;0.756206;0.422619
+renderingDevicePerspectives: Summit-XL Steel:depth_camera;1;0.895833;0;0
+renderingDevicePerspectives: Summit-XL Steel:rgb_camera;1;0.598437;0;0
+renderingDevicePerspectives: ugv1:depth_camera;1;0.895833;0;0
+renderingDevicePerspectives: ugv1:rgb_camera;1;0.598437;0;0
