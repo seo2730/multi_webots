@@ -4,13 +4,31 @@ services:
   ros2_webots_node:
     build: .
     container_name: webots_ros2_final
-    volumes:
-      - ./src:/ros2_ws/src
-    network_mode: host
+    
+    # 🌟 1. VNC 웹 브라우저 접속을 위한 포트 개방
+    ports:
+      - "6080:6080"
+    
+    # 🌟 2. GUI(RViz2 등) 구동 시 공유 메모리 부족으로 화면이 터지는 것을 방지 (아주 중요!)
+    shm_size: '1gb'
+    
+    # Windows/Mac 환경의 Docker에서는 host 네트워크가 제대로 동작하지 않아 
+    # 포트 맵핑(ports)과 충돌할 수 있으므로 주석 처리합니다.
+    # network_mode: host 
+    
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    
+    volumes:
+      - ./src:/ros2_ws/src
+    
     environment:
-      - DISPLAY=:0
+      # VNC 내부의 가상 모니터(:0)를 사용하므로 윈도우로 화면을 쏠 필요가 없습니다.
       - WEBOTS_CONTROLLER_URL=tcp://host.docker.internal:1234
-    command: tail -f /dev/null
+      - QT_X11_NO_MITSHM=1
+    
+    # 🌟 3. 빈 껍데기(tail -f) 대신 VNC 부팅 스크립트를 바로 실행시킵니다.
+    command: /start_vnc.sh
+    
     tty: true
+    stdin_open: true

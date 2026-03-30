@@ -37,8 +37,9 @@ def generate_launch_description():
 
     webots_ugv1_scan = Node(
         package='pointcloud_to_laserscan', executable='pointcloud_to_laserscan_node',
-        remappings=[('cloud_in', '/ugv1/Velodyne_VLP_16/point_cloud'),
-                    ('scan', '/scan')],
+        namespace='ugv1',
+        remappings=[('cloud_in', 'Velodyne_VLP_16/point_cloud'),
+                    ('scan', 'scan')],
         parameters=[{
             'target_frame': 'Velodyne_VLP_16',
             'transform_tolerance': 0.01,
