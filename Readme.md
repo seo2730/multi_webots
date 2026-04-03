@@ -34,6 +34,18 @@ cd ~/[다운받은 경로]/multi_webots
 3. `multi_webots` 디렉토리 내의 `worlds` 폴더에 있는 월드 파일(`.wbt`)을 선택하여 엽니다.
 4. 상단의 **Play** 버튼(또는 `Step` 버튼)을 눌러 시뮬레이션을 시작하고 로봇들의 동작을 확인합니다.
 
+## 5. X11 설치
+https://github.com/marchaesen/vcxsrv/releases
+
+## 6. 작동 명령어
+```bash
+ros2 launch webots_python webots_launch.py
+ros2 launch slam_gmapping slam_gmapping.launch.py namespace:=ugv1
+ros2 launch navigation nav2.launch.py namespace:=ugv1 map_subscribe_transient_local:=true use_sim_time:=true
+```
+
+네임스페이스 및 tf 문제 해결이 필요함
+
 ## 5. 참고 문서 (References)
 - Webots 공식 사용자 가이드 (User Guide)
 - Webots 공식 레퍼런스 매뉴얼 (Reference Manual)
