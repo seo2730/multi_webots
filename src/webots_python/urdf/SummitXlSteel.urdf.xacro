@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <robot name="ugv1" xmlns:xacro="http://ros.org/wiki/xacro">
-  <xacro:arg name="namespace" default="robot1"/>
+  <xacro:arg name="namespace" default="ugv1"/>
   <link name="base_link">
     <visual>
       <origin xyz="0 0 0.3" rpy="0 0 0"/>

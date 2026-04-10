@@ -35,28 +35,6 @@ def generate_launch_description():
         ]
     )
 
-    webots_ugv1_scan = Node(
-        package='pointcloud_to_laserscan', executable='pointcloud_to_laserscan_node',
-        namespace='ugv1',
-        remappings=[('cloud_in', 'Velodyne_VLP_16/point_cloud'),
-                    ('scan', 'scan')],
-        parameters=[{
-            'target_frame': 'Velodyne_VLP_16',
-            'transform_tolerance': 0.01,
-            'min_height': -0.52,
-            'max_height': 0.5,
-            'angle_min': -3.1415926,  # -M_PI/2
-            'angle_max': 3.1415926,  # M_PI/2
-            'angle_increment': 0.00349066,  # M_PI/360.0
-            'scan_time': 0.3333,
-            'range_min': 0.3,
-            'range_max': 20.0,
-            'use_inf': True,
-            'inf_epsilon': 1.0
-        }],
-        name='pointcloud_to_laserscan'
-    )
-
     webots_spot_driver = Node(
         package='webots_ros2_driver',
         executable='driver',
@@ -71,6 +49,5 @@ def generate_launch_description():
 
     return LaunchDescription([
                               webots_ugv1_driver,
-                              webots_ugv1_scan,
                               webots_spot_driver
                             ])
