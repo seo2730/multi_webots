@@ -19,6 +19,15 @@ def generate_launch_description():
     params_dir = get_package_share_directory('webots_python')
     params_dir_file = os.path.join(params_dir, 'config', 'mapper_params_online_async.yaml')
 
+    # 1. fix_timestamp 노드 추가
+    fix_ts_node = Node(
+        package='webots_python',
+        executable='fix_timestamp',
+        name='fix_timestamp',
+        namespace=namespace,
+        parameters=[{'use_sim_time': True}]
+    )
+
     # ========================================================================
     # 1. PointCloud to LaserScan 변환 노드 추가
     # 3D 라이다 데이터를 받아서 2D 스캔 데이터로 변환해 줍니다.
@@ -45,7 +54,7 @@ def generate_launch_description():
             'range_min': 0.2,
             'range_max': 50.0,
             'use_inf': True,
-            'use_sim_time': use_sim_time
+            'use_sim_time': True,
         }]
     )
 
@@ -53,7 +62,7 @@ def generate_launch_description():
     start_async_slam_toolbox_node = Node(
         parameters=[
           params_dir_file, 
-          {'use_sim_time': use_sim_time},
+          {'use_sim_time': True},
         ],
         package='slam_toolbox',
         executable='async_slam_toolbox_node',
@@ -65,7 +74,7 @@ def generate_launch_description():
             ('/tf_static', '/tf_static'),
             ('/map', 'map'),
             ('/map_metadata', 'map_metadata'),
-        ]
+        ],
     )
 
     # 3. RViz2 노드 추가
@@ -89,6 +98,7 @@ def generate_launch_description():
     ld.add_action(declare_use_sim_time_cmd)
     
     # 노드 실행 순서대로 추가
+    ld.add_action(fix_ts_node) 
     ld.add_action(pc_to_scan_node)              # [추가됨] 3D -> 2D 변환 노드 
     ld.add_action(start_async_slam_toolbox_node)
     ld.add_action(rviz_node)                    # RViz2 실행

@@ -32,6 +32,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'fix_timestamp = webots_python.fix_timestamp:main',
         ],
     },
 )
