@@ -2,19 +2,22 @@
 /ugv1/slam_toolbox:
   ros__parameters:
     # 핵심 뼈대 설정
-    odom_frame: odom            # Node에서 namespace가 적용되므로 상대 경로 사용
     map_frame: map              # 모든 로봇이 공유한다면 글로벌 /map 혹은 각자 map
+    odom_frame: odom            # Node에서 namespace가 적용되므로 상대 경로 사용
     base_frame: base_link       # 로봇의 기준점
     scan_topic: /ugv1/scan      # 반드시 2D 레이저 스캔 토픽 경로 확인
+
+    # 방송 여부 설정 (이게 false면 map 프레임이 안 뜹니다)
+    pub_map_to_odom: true
 
     # 동작 모드
     mode: mapping               # mapping 또는 localization
 
     # 성능 및 환경 설정
     use_sim_time: true          # Webots 시뮬레이션이므로 true
-    map_update_interval: 1.0    # 맵 갱신 주기 (초)
+    map_update_interval: 0.5    # 맵 갱신 주기 (초)
     resolution: 0.05            # 맵 해상도 (m)
     
     # 로봇 이동에 따른 업데이트 임계값 (gmapping의 linearUpdate와 유사)
-    minimum_travel_distance: 0.1
-    minimum_travel_heading: 0.1
+    minimum_travel_distance: 0.05
+    minimum_travel_heading: 0.05

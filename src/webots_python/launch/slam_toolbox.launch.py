@@ -34,7 +34,7 @@ def generate_launch_description():
             ('scan', 'scan')                             # 출력: /ugv1/scan
         ],
         parameters=[{
-            'target_frame': [namespace, '/base_link'],   # 2D로 누를 때 기준이 되는 로봇 뼈대 (ugv1/base_link)
+            'target_frame': 'base_link', #[namespace, '/base_link'],   # 2D로 누를 때 기준이 되는 로봇 뼈대 (ugv1/base_link)
             'transform_tolerance': 0.01,
             'min_height': 0.1,  # base_link 기준 0.1m 이상 
             'max_height': 2.0,  # 2.0m 이하의 포인트들만 2D로 압축
@@ -61,8 +61,8 @@ def generate_launch_description():
         output='screen',
         namespace=namespace,
         remappings=[
-            ('/tf', 'tf'),
-            ('/tf_static', 'tf_static'),
+            ('/tf', '/tf'),
+            ('/tf_static', '/tf_static'),
             ('/map', 'map'),
             ('/map_metadata', 'map_metadata'),
         ]
