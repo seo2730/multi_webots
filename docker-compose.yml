@@ -19,6 +19,18 @@ services:
       - DISPLAY=host.docker.internal:0
       - WEBOTS_CONTROLLER_URL=tcp://host.docker.internal:1234
       - QT_X11_NO_MITSHM=1
+      # 🌟 [추가 1] GPU가 그래픽 처리(RViz2 화면 그리기)를 할 수 있도록 권한 부여
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=graphics,compute,utility,display
+    
+    # 🌟 [추가 2] 컨테이너에 호스트의 NVIDIA GPU를 물리적으로 연결 (Passthrough)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     
     # VNC 스크립트 대신 컨테이너 유지 명령어로 복구
     command: tail -f /dev/null

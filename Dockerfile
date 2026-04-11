@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y \
     ros-humble-nav2-msgs ros-humble-nav2-costmap-2d ros-humble-navigation2 ros-humble-nav2-bringup \
     ros-humble-tf2-sensor-msgs ros-humble-tf2-geometry-msgs ros-humble-tf2-eigen \
     ros-humble-octomap ros-humble-octomap-msgs ros-humble-octomap-mapping \
-    ros-humble-visualization-msgs ros-humble-pcl-conversions ros-humble-pcl-ros \
+    ros-humble-visualization-msgs ros-humble-pcl-conversions ros-humble-pcl-ros ros-humble-pointcloud-to-laserscan \
     ros-humble-rosgraph-msgs ros-humble-cv-bridge ros-humble-image-transport \
     python3-colcon-common-extensions \
     && rm -rf /var/lib/apt/lists/*
