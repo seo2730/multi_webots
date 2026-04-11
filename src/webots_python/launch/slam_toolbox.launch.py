@@ -3,12 +3,14 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
+from launch.conditions import IfCondition
 from launch_ros.actions import Node
 
 def generate_launch_description():
     # 파라미터 선언
     namespace = LaunchConfiguration('namespace')
     use_sim_time = LaunchConfiguration('use_sim_time')
+    use_rviz = LaunchConfiguration('use_rviz')
 
     declare_namespace_cmd = DeclareLaunchArgument(
         'namespace', default_value='ugv1', description='Top-level namespace')
@@ -16,21 +18,14 @@ def generate_launch_description():
     declare_use_sim_time_cmd = DeclareLaunchArgument(
         'use_sim_time', default_value='true', description='Use simulation (Gazebo/Webots) clock')
 
+    declare_use_rviz_cmd = DeclareLaunchArgument(
+        'use_rviz', default_value='true', description='Whether to start RViz2')
+
     params_dir = get_package_share_directory('webots_python')
     params_dir_file = os.path.join(params_dir, 'config', 'mapper_params_online_async.yaml')
 
-    # 1. fix_timestamp 노드 추가
-    fix_ts_node = Node(
-        package='webots_python',
-        executable='fix_timestamp',
-        name='fix_timestamp',
-        namespace=namespace,
-        parameters=[{'use_sim_time': True}]
-    )
-
     # ========================================================================
-    # 1. PointCloud to LaserScan 변환 노드 추가
-    # 3D 라이다 데이터를 받아서 2D 스캔 데이터로 변환해 줍니다.
+    # 2. PointCloud to LaserScan 변환 노드
     # ========================================================================
     pc_to_scan_node = Node(
         package='pointcloud_to_laserscan',
@@ -39,17 +34,18 @@ def generate_launch_description():
         namespace=namespace,
         output='screen',
         remappings=[
-            ('cloud_in', 'Velodyne_VLP_16/point_cloud'), # 입력: /ugv1/Velodyne_VLP_16/point_cloud
-            ('scan', 'scan')                             # 출력: /ugv1/scan
+            ('cloud_in', 'Velodyne_VLP_16/point_cloud'), 
+            ('scan', 'scan')                             
         ],
         parameters=[{
-            'target_frame': 'base_link', #[namespace, '/base_link'],   # 2D로 누를 때 기준이 되는 로봇 뼈대 (ugv1/base_link)
+            # 🌟 [수정 핵심 1] 리스트를 사용하여 런타임에 "ugv1/base_link"로 합성되게 만듭니다!
+            'target_frame': [namespace, '/base_link'], 
             'transform_tolerance': 0.01,
-            'min_height': 0.1,  # base_link 기준 0.1m 이상 
-            'max_height': 2.0,  # 2.0m 이하의 포인트들만 2D로 압축
-            'angle_min': -3.141592,  # -180도
-            'angle_max': 3.141592,   # 180도
-            'angle_increment': 0.0087, # 해상도 (약 0.5도)
+            'min_height': 0.1,  
+            'max_height': 2.0,  
+            'angle_min': -3.141592,  
+            'angle_max': 3.141592,   
+            'angle_increment': 0.0087, 
             'scan_time': 0.1,
             'range_min': 0.2,
             'range_max': 50.0,
@@ -58,11 +54,18 @@ def generate_launch_description():
         }]
     )
 
-    # 2. SLAM Toolbox 노드
+    # ========================================================================
+    # 3. SLAM Toolbox 노드
+    # ========================================================================
     start_async_slam_toolbox_node = Node(
         parameters=[
           params_dir_file, 
-          {'use_sim_time': True},
+          {
+              'use_sim_time': True,
+              # 🌟 [수정 핵심 2] yaml 파일의 설정을 무시하고 동적 프레임 이름으로 강제 덮어쓰기!
+              'odom_frame': [namespace, '/odom'],
+              'base_frame': [namespace, '/base_link'],
+          },
         ],
         package='slam_toolbox',
         executable='async_slam_toolbox_node',
@@ -77,16 +80,17 @@ def generate_launch_description():
         ],
     )
 
-    # 3. RViz2 노드 추가
+    # ========================================================================
+    # 4. RViz2 노드
+    # ========================================================================
     pkg_share = get_package_share_directory('webots_python')
     rviz_config_path = os.path.join(pkg_share, 'rviz', 'webots_rviz.rviz')
 
-    # 2. RViz2 노드 설정
     rviz_node = Node(
+        condition=IfCondition(use_rviz),
         package='rviz2',
         executable='rviz2',
         name='rviz2',
-        # arguments 부분에 '-d'와 경로를 리스트로 추가합니다.
         arguments=['-d', rviz_config_path],
         parameters=[{'use_sim_time': True}],
         output='screen'
@@ -96,11 +100,11 @@ def generate_launch_description():
     ld = LaunchDescription()
     ld.add_action(declare_namespace_cmd)
     ld.add_action(declare_use_sim_time_cmd)
-    
+    ld.add_action(declare_use_rviz_cmd)
+
     # 노드 실행 순서대로 추가
-    ld.add_action(fix_ts_node) 
-    ld.add_action(pc_to_scan_node)              # [추가됨] 3D -> 2D 변환 노드 
+    ld.add_action(pc_to_scan_node)              
     ld.add_action(start_async_slam_toolbox_node)
-    ld.add_action(rviz_node)                    # RViz2 실행
+    ld.add_action(rviz_node)                    
 
     return ld
