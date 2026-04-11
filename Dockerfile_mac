@@ -61,6 +61,7 @@ RUN apt-get update && apt-get install -y \
     ros-humble-rosgraph-msgs \
     ros-humble-cv-bridge \
     ros-humble-image-transport \
+    ros-humble-rmw-cyclonedds-cpp \
     && rm -rf /var/lib/apt/lists/*
 
 # Webots 설치
@@ -81,6 +82,8 @@ RUN add-apt-repository ppa:borglab/gtsam-release-4.1 -y && \
 WORKDIR /ros2_ws
 
 RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
+RUN echo "source  /ros2_ws/install/setup.bash" >> ~/.bashrc
+RUN echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> ~/.bashrc
 
 # Mac에서는 X11 forwarding 대신 가상 디스플레이 사용
 ENV DISPLAY=:1

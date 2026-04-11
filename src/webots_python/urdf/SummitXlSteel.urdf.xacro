@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<robot name="ugv1" xmlns:xacro="http://ros.org/wiki/xacro">
+<robot name="ugv" xmlns:xacro="http://ros.org/wiki/xacro">
   <xacro:arg name="namespace" default="ugv1"/>
   
   <link name="$(arg namespace)/base_link">
@@ -59,7 +59,7 @@
   <joint name="$(arg namespace)/base_link_Velodyne_VLP_16_joint" type="fixed">
     <parent link="$(arg namespace)/base_link"/>
     <child link="$(arg namespace)/Velodyne_VLP_16"/>
-    <origin xyz="0 0 0.74062" rpy="0 0 0"/>
+    <origin xyz="0 0 0.44062" rpy="0 0 0"/>
   </joint>
   
   <link name="$(arg namespace)/imu">

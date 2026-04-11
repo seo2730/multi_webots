@@ -66,6 +66,7 @@ def generate_launch_description():
               'odom_frame': [namespace, '/odom'],
               'base_frame': [namespace, '/base_link'],
               'map_frame': [namespace, '/map'],
+              'scan_topic': [namespace, '/scan'], # 🌟 필수!
           },
         ],
         package='slam_toolbox',

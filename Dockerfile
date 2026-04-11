@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y \
     ros-humble-tf2-sensor-msgs ros-humble-tf2-geometry-msgs ros-humble-tf2-eigen \
     ros-humble-octomap ros-humble-octomap-msgs ros-humble-octomap-mapping \
     ros-humble-visualization-msgs ros-humble-pcl-conversions ros-humble-pcl-ros ros-humble-pointcloud-to-laserscan \
-    ros-humble-rosgraph-msgs ros-humble-cv-bridge ros-humble-image-transport \
+    ros-humble-rosgraph-msgs ros-humble-cv-bridge ros-humble-image-transport ros-humble-rmw-cyclonedds-cpp \
     python3-colcon-common-extensions \
     && rm -rf /var/lib/apt/lists/*
 
@@ -42,6 +42,8 @@ RUN add-apt-repository ppa:borglab/gtsam-release-4.1 -y && \
 # 5. 환경 설정
 WORKDIR /ros2_ws
 RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+RUN echo "source  /ros2_ws/install/setup.bash" >> ~/.bashrc
+RUN echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> ~/.bashrc
 ENV USER=root
 
 # 🌟 X11 화면 전송을 위한 환경 변수 (host.docker.internal을 통해 윈도우로 쏩니다)
