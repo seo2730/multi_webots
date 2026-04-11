@@ -65,6 +65,7 @@ def generate_launch_description():
               # 🌟 [수정 핵심 2] yaml 파일의 설정을 무시하고 동적 프레임 이름으로 강제 덮어쓰기!
               'odom_frame': [namespace, '/odom'],
               'base_frame': [namespace, '/base_link'],
+              'map_frame': [namespace, '/map'],
           },
         ],
         package='slam_toolbox',
