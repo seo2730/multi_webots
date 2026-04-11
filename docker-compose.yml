@@ -1,38 +1,64 @@
 version: '3.8'
 
+x-ros-common: &ros-common
+  build: .
+  network_mode: "host" 
+  ipc: host
+  pid: host
+  # 🚨 [주의] volumes 마운트를 제거하거나 주석 처리하세요!
+  # Dockerfile에서 COPY로 코드를 넣고 빌드했기 때문에, 여기서 다시 덮어쓰면 
+  # 빌드된 파일 경로가 꼬일 수 있습니다. (코드를 수정할 때마다 docker-compose build를 다시 하는 방식이 안전합니다.)
+  # volumes:
+  #   - .:/ros2_ws/src/multi_webots
+  environment:
+    - DISPLAY=${DISPLAY:-host.docker.internal:0}
+    - QT_X11_NO_MITSHM=1
+    - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    - ROS_LOCALHOST_ONLY=0 
+    - ROS_DOMAIN_ID=30
+
 services:
-  ros2_webots_node:
-    build: .
-    container_name: webots_ros2_final
-    
-    # RViz2 구동 시 공유 메모리 충돌 방지
-    shm_size: '1gb'
-    
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    
-    volumes:
-      - ./src:/ros2_ws/src
-    
+# 1. 마스터 관제 컨테이너
+  master:
+    <<: *ros-common
+    container_name: rviz_master
     environment:
-      # X11 디스플레이를 윈도우(호스트)의 0번 모니터로 전송
-      - DISPLAY=host.docker.internal:0
-      - WEBOTS_CONTROLLER_URL=tcp://host.docker.internal:1234
-      - QT_X11_NO_MITSHM=1
-      # 🌟 [추가 1] GPU가 그래픽 처리(RViz2 화면 그리기)를 할 수 있도록 권한 부여
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=graphics,compute,utility,display
-    
-    # 🌟 [추가 2] 컨테이너에 호스트의 NVIDIA GPU를 물리적으로 연결 (Passthrough)
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    
-    # VNC 스크립트 대신 컨테이너 유지 명령어로 복구
-    command: tail -f /dev/null
-    tty: true
-    stdin_open: true
+      - ROS_DOMAIN_ID=31
+    # 🌟 [수정] 실행 전에 반드시 환경(setup.bash)을 먼저 로드(source)합니다!1
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 run rviz2 rviz2 -d /ros2_ws/src/webots_python/rviz/webots_rviz.rviz"
+
+  # 2. UGV1 독립 컨테이너
+  ugv1:
+    <<: *ros-common
+    container_name: ugv1_brain
+    environment:
+      - DISPLAY=${DISPLAY:-host.docker.internal:0}
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - ROS_LOCALHOST_ONLY=0
+      - ROS_DOMAIN_ID=30
+      - ROBOT_ID=ugv1
+    # 🌟 [수정] source 명령어 부활!
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 launch webots_python single_ugv.launch.py"
+    depends_on:
+      - master
+
+  # 3. UGV2 독립 컨테이너
+  # ugv2:
+  #   <<: *ros-common
+  #   container_name: ugv2_brain
+  #   environment:
+  #     - DISPLAY=${DISPLAY:-host.docker.internal:0}
+  #     - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+  #     - ROS_LOCALHOST_ONLY=0
+  #     - ROS_DOMAIN_ID=31
+  #     - ROBOT_ID=ugv2
+  #   # 🌟 [수정] source 명령어 부활!
+  #   command: >
+  #     bash -c "source /ros2_ws/install/setup.bash &&
+  #              ros2 launch webots_python single_ugv.launch.py"
+  #   depends_on:
+  #     - master

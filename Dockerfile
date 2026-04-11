@@ -41,6 +41,10 @@ RUN add-apt-repository ppa:borglab/gtsam-release-4.1 -y && \
 
 # 5. 환경 설정
 WORKDIR /ros2_ws
+# 호스트의 소스 코드를 도커 안으로 복사
+COPY src /ros2_ws/src
+# 🌟 [핵심] 이미지를 구울 때 colcon build를 아예 끝내버립니다!
+RUN /bin/bash -c '. /opt/ros/humble/setup.bash && colcon build --symlink-install'
 RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
 RUN echo "source  /ros2_ws/install/setup.bash" >> ~/.bashrc
 RUN echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> ~/.bashrc
