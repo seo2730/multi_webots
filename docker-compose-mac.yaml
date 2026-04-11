@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  ros2_webots_node:
+    build:
+      context: .
+      dockerfile: Dockerfile_mac
+
+    container_name: webots_ros2_final
+
+    # 🌟 VNC 접속용 포트 개방
+    ports:
+      - "6080:6080"
+      
+    # 🌟 RViz2 튕김 방지용 메모리
+    shm_size: '1gb'
+    
+    volumes:
+      - ./src:/ros2_ws/src
+      
+    environment:
+      # Webots 컨트롤러 연결
+      - WEBOTS_CONTROLLER_URL=tcp://host.docker.internal:1234
+      # VNC 내부에서 RViz2 그래픽 충돌을 막아주는 안전 장치
+      - LIBGL_ALWAYS_SOFTWARE=1
+      - GALLIUM_DRIVER=llvmpipe
+      
+    # 🌟 컨테이너 켜질 때 VNC 스크립트 자동 실행
+    command: /start_vnc.sh
+    tty: true
+    stdin_open: true
