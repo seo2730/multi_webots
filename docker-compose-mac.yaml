@@ -1,31 +1,62 @@
 version: '3.8'
 
+x-mac-common: &mac-common
+  build:
+    context: .
+    dockerfile: Dockerfile_mac
+  # 🚨 Mac에서는 network_mode: "host" 사용 시 6080 포트 접속이 불가능해집니다.
+  # 기본 네트워크를 사용해도 ROS 2 컨테이너 간 통신은 정상적으로 이루어집니다.
+  shm_size: '1gb'
+  # 🚨 코드를 수정할 때마다 빌드(docker-compose build)하는 방식을 쓰신다면 주석 처리하세요.
+  # volumes:
+  #   - ./src:/ros2_ws/src
+  environment:
+    - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+    - ROS_LOCALHOST_ONLY=0 
+    - ROS_DOMAIN_ID=30
+
 services:
-  ros2_webots_node:
-    build:
-      context: .
-      dockerfile: Dockerfile_mac
-
-    container_name: webots_ros2_final
-
-    # 🌟 VNC 접속용 포트 개방
+  # 1. 마스터 관제 컨테이너 (VNC & RViz2)
+  master:
+    <<: *mac-common
+    container_name: rviz_master_mac
     ports:
-      - "6080:6080"
-      
-    # 🌟 RViz2 튕김 방지용 메모리
-    shm_size: '1gb'
-    
-    volumes:
-      - ./src:/ros2_ws/src
-      
-    environment:
-      # Webots 컨트롤러 연결
-      - WEBOTS_CONTROLLER_URL=tcp://host.docker.internal:1234
-      # VNC 내부에서 RViz2 그래픽 충돌을 막아주는 안전 장치
-      - LIBGL_ALWAYS_SOFTWARE=1
+      - "6080:6080" # 🌟 브라우저에서 localhost:6080 접속
+    environment: # YAML 문법상 재정의 시 덮어쓰므로 필요한 설정을 모두 명시합니다.
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - ROS_LOCALHOST_ONLY=0 
+      - ROS_DOMAIN_ID=30
+      - LIBGL_ALWAYS_SOFTWARE=1 # VNC RViz2 튕김 방지
       - GALLIUM_DRIVER=llvmpipe
-      
-    # 🌟 컨테이너 켜질 때 VNC 스크립트 자동 실행
+    # 💡 [주의] Mac에서는 VNC 환경을 먼저 띄워야 하므로 자동 실행 대신 VNC를 켭니다.
+    # localhost:6080 에 접속 후 내부 터미널을 열어 직접 RViz2 명령어를 입력해 주세요!
+    # 명령어: source /ros2_ws/install/setup.bash && ros2 run rviz2 rviz2 -d /ros2_ws/src/webots_python/rviz/webots_rviz.rviz
     command: /start_vnc.sh
     tty: true
     stdin_open: true
+
+  # 2. UGV1 독립 컨테이너
+  ugv1:
+    <<: *mac-common
+    container_name: ugv1_brain_mac
+    environment:
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - ROS_LOCALHOST_ONLY=0
+      - ROS_DOMAIN_ID=30
+      - ROBOT_ID=ugv1
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 launch webots_python single_ugv.launch.py"
+
+  # 3. UGV2 독립 컨테이너
+  ugv2:
+    <<: *mac-common
+    container_name: ugv2_brain_mac
+    environment:
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - ROS_LOCALHOST_ONLY=0
+      - ROS_DOMAIN_ID=30
+      - ROBOT_ID=ugv2
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 launch webots_python single_ugv.launch.py"
