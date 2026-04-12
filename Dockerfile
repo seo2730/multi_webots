@@ -47,7 +47,7 @@ COPY src /ros2_ws/src
 RUN /bin/bash -c '. /opt/ros/humble/setup.bash && colcon build --symlink-install'
 RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
 RUN echo "source  /ros2_ws/install/setup.bash" >> ~/.bashrc
-RUN echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> ~/.bashrc
+# RUN echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> ~/.bashrc
 ENV USER=root
 
 # 🌟 X11 화면 전송을 위한 환경 변수 (host.docker.internal을 통해 윈도우로 쏩니다)

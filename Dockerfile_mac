@@ -83,7 +83,7 @@ WORKDIR /ros2_ws
 
 RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
 RUN echo "source  /ros2_ws/install/setup.bash" >> ~/.bashrc
-RUN echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> ~/.bashrc
+#RUN echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> ~/.bashrc
 
 # Mac에서는 X11 forwarding 대신 가상 디스플레이 사용
 ENV DISPLAY=:1
