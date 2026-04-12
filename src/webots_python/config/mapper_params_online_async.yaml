@@ -1,6 +1,6 @@
 # 최상단에 slam_toolbox라는 특정 노드 이름을 쓰지 않고 와일드카드(**)를 씁니다!
 # 이렇게 해야 네임스페이스(ugv1, ugv2)가 붙어도 설정이 완벽하게 로드됩니다.
-slam_toolbox:
+/**:
   ros__parameters:
     # 🌟 [필수] Webots 시뮬레이션과 시간을 동기화!
     use_sim_time: true 
@@ -24,7 +24,7 @@ slam_toolbox:
 
     # 맵 설정 (연산 부하를 줄이기 위해 간격을 살짝 넓힙니다)
     map_update_interval: 1.0       # 너무 빠르면 버벅임 (0.1 -> 1.0 추천)
-    resolution: 0.05               # 일반적인 Nav2 해상도
+    resolution: 0.1              # 일반적인 Nav2 해상도
     minimum_travel_distance: 0.2
     minimum_travel_heading: 0.2
 

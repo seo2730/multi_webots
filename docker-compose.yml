@@ -13,7 +13,7 @@ x-ros-common: &ros-common
   environment:
     - DISPLAY=${DISPLAY:-host.docker.internal:0}
     - QT_X11_NO_MITSHM=1
-    - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
     - ROS_LOCALHOST_ONLY=0 
     - ROS_DOMAIN_ID=30
 
@@ -23,19 +23,36 @@ services:
     <<: *ros-common
     container_name: rviz_master
     environment:
-      - ROS_DOMAIN_ID=31
+      - ROS_DOMAIN_ID=30
     # 🌟 [수정] 실행 전에 반드시 환경(setup.bash)을 먼저 로드(source)합니다!1
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
                ros2 run rviz2 rviz2 -d /ros2_ws/src/webots_python/rviz/webots_rviz.rviz"
 
   # 2. UGV1 독립 컨테이너
+  ugv2:
+    <<: *ros-common
+    container_name: ugv2_brain
+    environment:
+      - DISPLAY=${DISPLAY:-host.docker.internal:0}
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - ROS_LOCALHOST_ONLY=0
+      - ROS_DOMAIN_ID=30
+      - ROBOT_ID=ugv2
+    # 🌟 [수정] source 명령어 부활!
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 launch webots_python single_ugv.launch.py"
+    depends_on:
+      - master
+
+  # 3. UGV2 독립 컨테이너
   ugv1:
     <<: *ros-common
     container_name: ugv1_brain
     environment:
       - DISPLAY=${DISPLAY:-host.docker.internal:0}
-      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
       - ROS_LOCALHOST_ONLY=0
       - ROS_DOMAIN_ID=30
       - ROBOT_ID=ugv1
@@ -45,20 +62,3 @@ services:
                ros2 launch webots_python single_ugv.launch.py"
     depends_on:
       - master
-
-  # 3. UGV2 독립 컨테이너
-  # ugv2:
-  #   <<: *ros-common
-  #   container_name: ugv2_brain
-  #   environment:
-  #     - DISPLAY=${DISPLAY:-host.docker.internal:0}
-  #     - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-  #     - ROS_LOCALHOST_ONLY=0
-  #     - ROS_DOMAIN_ID=31
-  #     - ROBOT_ID=ugv2
-  #   # 🌟 [수정] source 명령어 부활!
-  #   command: >
-  #     bash -c "source /ros2_ws/install/setup.bash &&
-  #              ros2 launch webots_python single_ugv.launch.py"
-  #   depends_on:
-  #     - master

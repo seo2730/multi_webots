@@ -5,6 +5,7 @@ from launch_ros.actions import Node
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 import xacro
+from launch.actions import TimerAction
 
 def generate_launch_description():
     # 🌟 1. docker-compose에서 주입한 환경 변수 읽어오기 (기본값: ugv1)
@@ -26,7 +27,7 @@ def generate_launch_description():
         package='robot_state_publisher',
         executable='robot_state_publisher',
         namespace=ns,
-        parameters=[{'robot_description': robot_description, 'use_sim_time': True}],
+        parameters=[{'robot_description': robot_description, 'use_sim_time': True, 'frame_prefix': f'{ns}/'}],
         remappings=[('/tf', '/tf'), ('/tf_static', '/tf_static')]
     )
 
@@ -42,12 +43,14 @@ def generate_launch_description():
             'robot_description': robot_description,
             'use_sim_time': True,
             'set_robot_state_publisher': False, # 🚨 필수
-            'qos_reliability': 1,
+            'synchronization': True,
         }],
         remappings=[
             ('/tf', '/tf'),
             ('/tf_static', '/tf_static'),
-            ('joint_states', f'/{ns}/joint_states')
+            ('joint_states', f'/{ns}/joint_states'),
+            ('/Velodyne_VLP_16/point_cloud', f'/{ns}/Velodyne_VLP_16/point_cloud'),
+            ('/clock', '/clock')
         ]
     )
 
@@ -59,15 +62,22 @@ def generate_launch_description():
         executable='pointcloud_to_laserscan_node',
         namespace=ns,
         remappings=[
-            ('cloud_in', 'Velodyne_VLP_16/point_cloud'), 
-            ('scan', 'scan'),
+            ('cloud_in', f'/{ns}/Velodyne_VLP_16/point_cloud'), 
+            ('scan', f'/{ns}/scan'),
             ('/tf', '/tf'), ('/tf_static', '/tf_static')
         ],
         parameters=[{
             'target_frame': f'{ns}/base_link', 
-            'transform_tolerance': 1.0,
-            'min_height': 0.1, 'max_height': 2.0,
-            'qos_reliability': 1,
+            'transform_tolerance': 5.0,
+            'min_height': 0.1,  
+            'max_height': 2.0,  
+            'angle_min': -3.141592,  
+            'angle_max': 3.141592,   
+            'angle_increment': 0.0087, 
+            'scan_time': 0.1,
+            'range_min': 0.2,
+            'range_max': 50.0,
+            'use_inf': True,
             'use_sim_time': True,
         }]
     )
@@ -111,6 +121,12 @@ def generate_launch_description():
         }.items()
     )
 
+    # 🌟 Nav2 실행을 3초 지연시킵니다!
+    delayed_nav2_launch = TimerAction(
+        period=3.0, # 3초 대기
+        actions=[nav2_launch]
+    )
+
     print(f"✅ 로봇 [{ns}] : Webots + SLAM + Nav2 세팅 완료")
 
     return LaunchDescription([
@@ -118,5 +134,5 @@ def generate_launch_description():
         webots_driver_node,
         pc_to_scan_node,
         slam_node,
-        nav2_launch # 🌟 리스트에 추가
+        delayed_nav2_launch # 🌟 지연된 Nav2 사용
     ])

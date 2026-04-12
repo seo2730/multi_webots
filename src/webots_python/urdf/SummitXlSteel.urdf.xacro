@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <robot name="ugv" xmlns:xacro="http://ros.org/wiki/xacro">
-  <xacro:arg name="namespace" default="ugv1"/>
+  <xacro:arg name="namespace" default=""/>
   
-  <link name="$(arg namespace)/base_link">
+  <link name="base_link">
     <visual>
       <origin xyz="0 0 0.3" rpy="0 0 0"/>
       <geometry>
@@ -41,7 +41,7 @@
     </collision>
   </link>
   
-  <link name="$(arg namespace)/Velodyne_VLP_16">
+  <link name="Velodyne_VLP_16">
     <visual>
       <origin xyz="0 -0.00165 0" rpy="0 0 0"/>
       <geometry>
@@ -56,101 +56,101 @@
     </collision>
   </link>
   
-  <joint name="$(arg namespace)/base_link_Velodyne_VLP_16_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/Velodyne_VLP_16"/>
+  <joint name="base_link_Velodyne_VLP_16_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="Velodyne_VLP_16"/>
     <origin xyz="0 0 0.44062" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/imu">
+  <link name="imu">
   </link>
-  <joint name="$(arg namespace)/base_link_imu_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/imu"/>
+  <joint name="base_link_imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu"/>
     <origin xyz="0 0 0.39062" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/gyr">
+  <link name="gyr">
   </link>
-  <joint name="$(arg namespace)/base_link_gyr_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/gyr"/>
+  <joint name="base_link_gyr_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="gyr"/>
     <origin xyz="0 0 0.36062" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/acc">
+  <link name="acc">
   </link>
-  <joint name="$(arg namespace)/base_link_acc_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/acc"/>
+  <joint name="base_link_acc_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="acc"/>
     <origin xyz="0 0 0.36062" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/com">
+  <link name="com">
   </link>
-  <joint name="$(arg namespace)/base_link_com_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/com"/>
+  <joint name="base_link_com_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="com"/>
     <origin xyz="0 0 0.38062" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/Brackets_v2">
+  <link name="Brackets_v2">
   </link>
-  <joint name="$(arg namespace)/base_link_Brackets_v2_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/Brackets_v2"/>
+  <joint name="base_link_Brackets_v2_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="Brackets_v2"/>
     <origin xyz="0 0 0.39062" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/solid">
+  <link name="solid">
   </link>
-  <joint name="$(arg namespace)/Brackets_v2_solid_joint" type="fixed">
-    <parent link="$(arg namespace)/Brackets_v2"/>
-    <child link="$(arg namespace)/solid"/>
+  <joint name="Brackets_v2_solid_joint" type="fixed">
+    <parent link="Brackets_v2"/>
+    <child link="solid"/>
     <origin xyz="0 0 0" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/robot_gps">
+  <link name="robot_gps">
   </link>
-  <joint name="$(arg namespace)/base_link_robot_gps_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/robot_gps"/>
+  <joint name="base_link_robot_gps_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="robot_gps"/>
     <origin xyz="0 0 0.37062" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/gps">
+  <link name="gps">
   </link>
-  <joint name="$(arg namespace)/base_link_gps_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/gps"/>
+  <joint name="base_link_gps_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="gps"/>
     <origin xyz="-0.365 -0.167 0.302" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/solid_0">
+  <link name="solid_0">
   </link>
-  <joint name="$(arg namespace)/base_link_solid_0_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/solid_0"/>
+  <joint name="base_link_solid_0_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="solid_0"/>
     <origin xyz="0.3585 0 0.29062" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/depth_camera">
+  <link name="depth_camera">
   </link>
-  <joint name="$(arg namespace)/solid_0_depth_camera_joint" type="fixed">
-    <parent link="$(arg namespace)/solid_0"/>
-    <child link="$(arg namespace)/depth_camera"/>
+  <joint name="solid_0_depth_camera_joint" type="fixed">
+    <parent link="solid_0"/>
+    <child link="depth_camera"/>
     <origin xyz="0 0 0.015" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/rgb_camera">
+  <link name="rgb_camera">
   </link>
-  <joint name="$(arg namespace)/solid_0_rgb_camera_joint" type="fixed">
-    <parent link="$(arg namespace)/solid_0"/>
-    <child link="$(arg namespace)/rgb_camera"/>
+  <joint name="solid_0_rgb_camera_joint" type="fixed">
+    <parent link="solid_0"/>
+    <child link="rgb_camera"/>
     <origin xyz="0 0 0.015" rpy="-1.570796 0 -1.570796"/>
   </joint>
   
-  <link name="$(arg namespace)/front_rgbd_camera_link">
+  <link name="front_rgbd_camera_link">
     <visual>
       <origin xyz="-0.02 0 0.015" rpy="0 0 0"/>
       <geometry>
@@ -164,129 +164,129 @@
       </geometry>
     </collision>
   </link>
-  <joint name="$(arg namespace)/solid_0_front_rgbd_camera_link_joint" type="fixed">
-    <parent link="$(arg namespace)/solid_0"/>
-    <child link="$(arg namespace)/front_rgbd_camera_link"/>
+  <joint name="solid_0_front_rgbd_camera_link_joint" type="fixed">
+    <parent link="solid_0"/>
+    <child link="front_rgbd_camera_link"/>
     <origin xyz="0.007 0 0" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/compass">
+  <link name="compass">
   </link>
-  <joint name="$(arg namespace)/base_link_compass_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/compass"/>
+  <joint name="base_link_compass_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="compass"/>
     <origin xyz="0.127 -0.129 0.212" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/gyro">
+  <link name="gyro">
   </link>
-  <joint name="$(arg namespace)/base_link_gyro_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/gyro"/>
+  <joint name="base_link_gyro_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="gyro"/>
     <origin xyz="0.127 -0.129 0.212" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/accelerometer">
+  <link name="accelerometer">
   </link>
-  <joint name="$(arg namespace)/base_link_accelerometer_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/accelerometer"/>
+  <joint name="base_link_accelerometer_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="accelerometer"/>
     <origin xyz="0.127 -0.129 0.212" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/base_docking_contact">
+  <link name="base_docking_contact">
   </link>
-  <joint name="$(arg namespace)/base_link_base_docking_contact_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/base_docking_contact"/>
+  <joint name="base_link_base_docking_contact_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="base_docking_contact"/>
     <origin xyz="0.35 0 0.09" rpy="0 0 0"/>
   </joint>
   
-  <joint name="$(arg namespace)/back_right_wheel_joint" type="continuous">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/back_right_wheel_link"/>
+  <joint name="back_right_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="back_right_wheel_link"/>
     <axis xyz="0 -0.000004 -1"/>
     <limit effort="100" velocity="100"/>
     <origin xyz="-0.2225 -0.2045 0" rpy="1.5708 -0.00041 0"/>
   </joint>
-  <link name="$(arg namespace)/back_right_wheel_link">
+  <link name="back_right_wheel_link">
   </link>
   
-  <joint name="$(arg namespace)/back_left_wheel_joint" type="continuous">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/back_left_wheel_link"/>
+  <joint name="back_left_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="back_left_wheel_link"/>
     <axis xyz="0 -0.000004 -1"/>
     <limit effort="100" velocity="100"/>
     <origin xyz="-0.222501 0.20764 0" rpy="1.5708 -0.00041 0"/>
   </joint>
-  <link name="$(arg namespace)/back_left_wheel_link">
+  <link name="back_left_wheel_link">
   </link>
   
-  <joint name="$(arg namespace)/front_left_wheel_joint" type="continuous">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/front_left_wheel_link"/>
+  <joint name="front_left_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="front_left_wheel_link"/>
     <axis xyz="0 -0.000004 -1"/>
     <limit effort="100" velocity="100"/>
     <origin xyz="0.222499 0.207638 0" rpy="1.5708 -0.000205 0"/>
   </joint>
-  <link name="$(arg namespace)/front_left_wheel_link">
+  <link name="front_left_wheel_link">
   </link>
   
-  <joint name="$(arg namespace)/front_right_wheel_joint" type="continuous">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/front_right_wheel_link"/>
+  <joint name="front_right_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="front_right_wheel_link"/>
     <axis xyz="0 -0.000004 -1"/>
     <limit effort="100" velocity="100"/>
     <origin xyz="0.222499 -0.201316 0" rpy="1.5708 -0.000205 0"/>
   </joint>
-  <link name="$(arg namespace)/front_right_wheel_link">
+  <link name="front_right_wheel_link">
   </link>
   
-  <link name="$(arg namespace)/base_logo_rear">
+  <link name="base_logo_rear">
   </link>
-  <joint name="$(arg namespace)/base_link_base_logo_rear_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/base_logo_rear"/>
+  <joint name="base_link_base_logo_rear_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="base_logo_rear"/>
     <origin xyz="-0.345001 0.003186 0" rpy="0 0 1.570796"/>
   </joint>
   
-  <link name="$(arg namespace)/base_logo_front">
+  <link name="base_logo_front">
   </link>
-  <joint name="$(arg namespace)/base_link_base_logo_front_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/base_logo_front"/>
+  <joint name="base_link_base_logo_front_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="base_logo_front"/>
     <origin xyz="0.345 0 0" rpy="0 0 -1.570796"/>
   </joint>
   
-  <link name="$(arg namespace)/base_logo_right">
+  <link name="base_logo_right">
   </link>
-  <joint name="$(arg namespace)/base_link_base_logo_right_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/base_logo_right"/>
+  <joint name="base_link_base_logo_right_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="base_logo_right"/>
     <origin xyz="0 -0.28931 0.29062" rpy="0 0 -3.141592"/>
   </joint>
   
-  <link name="$(arg namespace)/base_logo_left">
+  <link name="base_logo_left">
   </link>
-  <joint name="$(arg namespace)/base_link_base_logo_left_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/base_logo_left"/>
+  <joint name="base_link_base_logo_left_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="base_logo_left"/>
     <origin xyz="0 0.28931 0.29062" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/base_chapa_front">
+  <link name="base_chapa_front">
   </link>
-  <joint name="$(arg namespace)/base_link_base_chapa_front_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/base_chapa_front"/>
+  <joint name="base_link_base_chapa_front_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="base_chapa_front"/>
     <origin xyz="0.359 0 0.30062" rpy="0 0 0"/>
   </joint>
   
-  <link name="$(arg namespace)/base_chapa">
+  <link name="base_chapa">
   </link>
-  <joint name="$(arg namespace)/base_link_base_chapa_joint" type="fixed">
-    <parent link="$(arg namespace)/base_link"/>
-    <child link="$(arg namespace)/base_chapa"/>
+  <joint name="base_link_base_chapa_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="base_chapa"/>
     <origin xyz="0 0 0.39062" rpy="0 0 0"/>
   </joint>
   
@@ -294,6 +294,7 @@
     <plugin type="simulator.robot_driver.main">
       <namespace>$(arg namespace)</namespace>
     </plugin>
+
     <device reference="Velodyne_VLP_16" type="Lidar">
       <ros><frameName>$(arg namespace)/Velodyne_VLP_16</frameName></ros>
     </device>
