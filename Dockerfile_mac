@@ -42,26 +42,13 @@ RUN apt-get update && apt-get install -y \
 
 # ROS 패키지
 RUN apt-get update && apt-get install -y \
-    ros-humble-webots-ros2 \
-    ros-humble-ros2-control \
-    ros-humble-ros2-controllers \
-    ros-humble-nav2-msgs \
-    ros-humble-nav2-costmap-2d \
-    ros-humble-navigation2 \
-    ros-humble-nav2-bringup \
-    ros-humble-tf2-sensor-msgs \
-    ros-humble-tf2-geometry-msgs \
-    ros-humble-tf2-eigen \
-    ros-humble-octomap \
-    ros-humble-octomap-msgs \
-    ros-humble-octomap-mapping \
-    ros-humble-visualization-msgs \
-    ros-humble-pcl-conversions \
-    ros-humble-pcl-ros \
-    ros-humble-rosgraph-msgs \
-    ros-humble-cv-bridge \
-    ros-humble-image-transport \
-    ros-humble-rmw-cyclonedds-cpp \
+    ros-humble-webots-ros2 ros-humble-ros2-control ros-humble-ros2-controllers \
+    ros-humble-nav2-msgs ros-humble-nav2-costmap-2d ros-humble-navigation2 ros-humble-nav2-bringup \
+    ros-humble-tf2-sensor-msgs ros-humble-tf2-geometry-msgs ros-humble-tf2-eigen \
+    ros-humble-octomap ros-humble-octomap-msgs ros-humble-octomap-mapping \
+    ros-humble-visualization-msgs ros-humble-pcl-conversions ros-humble-pcl-ros ros-humble-pointcloud-to-laserscan \
+    ros-humble-rosgraph-msgs ros-humble-cv-bridge ros-humble-image-transport ros-humble-rmw-cyclonedds-cpp \
+    python3-colcon-common-extensions \
     && rm -rf /var/lib/apt/lists/*
 
 # Webots 설치
@@ -90,7 +77,18 @@ ENV DISPLAY=:1
 ENV LIBGL_ALWAYS_SOFTWARE=1
 ENV QT_X11_NO_MITSHM=1
 
-# 🌟 6. VNC 무한 대기 시작 스크립트 작성 (자물쇠 청소 기능 추가)
+# 6. 환경 설정
+WORKDIR /ros2_ws
+# 호스트의 소스 코드를 도커 안으로 복사
+COPY src /ros2_ws/src
+# 🌟 [핵심] 이미지를 구울 때 colcon build를 아예 끝내버립니다!
+RUN /bin/bash -c '. /opt/ros/humble/setup.bash && colcon build --symlink-install'
+RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+RUN echo "source  /ros2_ws/install/setup.bash" >> ~/.bashrc
+# RUN echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> ~/.bashrc
+ENV USER=root
+
+# 🌟 7. VNC 무한 대기 시작 스크립트 작성 (자물쇠 청소 기능 추가)
 RUN echo '#!/bin/bash\n\
 export DISPLAY=:0\n\
 # 👇 바로 이 부분! 재시작 시 꼬이는 이전 가상 모니터 찌꺼기를 강제로 박살냅니다.\n\
