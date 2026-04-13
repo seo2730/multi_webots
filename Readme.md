@@ -1,6 +1,12 @@
 # Webots를 활용한 다중 로봇 시뮬레이션
 
-## 1. 사전 요구 사항 (Prerequisites)
+## 0. 사전 요구 사항 (Prerequisites)
+- 호스트 장치 운영체제 : 윈도우, Mac
+- 도커 운영체제 : Ubuntu 22.04
+- ROS : humble
+- Webots : 2025a
+
+## 1. Webots 설치
 시뮬레이션을 원활하게 실행하기 위해 시스템에 Webots가 설치 필요
 - **Webots 다운로드**: [Cyberbotics 공식 홈페이지](https://cyberbotics.com/)에서 운영체제에 맞는 **2025a** 버전을 다운로드하여 설치
 - **Webots 클라우드 공유 및 정보**: [https://webots.cloud/](https://webots.cloud/)
@@ -19,12 +25,6 @@ cd multi_webots
 
 # (이미 클론한 상태라면) 서브모듈 초기화 및 업데이트
 git submodule update --init --recursive
-```
-
-본 워크스페이스 설정을 위해 터미널에서 다음을 실행합니다.
-```bash
-cd ~/[다운받은 경로]/multi_webots
-# 필요한 경우 컨트롤러 빌드 명령어를 실행합니다. (예: make)
 ```
 
 ## 3. 시뮬레이션 실행 방법 (Usage)
@@ -73,19 +73,31 @@ cd ~/[다운받은 경로]/multi_webots
 
 ### 1. Windows (윈도우)
 ```bash
-ros2 launch webots_python webots_launch.py
-ros2 launch slam_gmapping slam_gmapping.launch.py namespace:=ugv1
-ros2 launch navigation nav2.launch.py namespace:=ugv1 map_subscribe_transient_local:=true use_sim_time:=true
+# 도커 시작 (rviz용, ugb1, ugv2)
+docker-compose up --build -d
+docker-compose down
 
+# visual code로 도커 컨테이너 접속하여 목표점 주면 자율주행 시작
 ros2 topic pub -1 /ugv1/goal_pose geometry_msgs/msg/PoseStamped "{header: {stamp: {sec: 0, nanosec: 0}, frame_id: 'ugv1/map'}, pose: {position: {x: 2.0, y: 1.0, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}"
 
 ros2 topic pub -1 /ugv2/goal_pose geometry_msgs/msg/PoseStamped "{header: {stamp: {sec: 0, nanosec: 0}, frame_id: 'ugv2/map'}, pose: {position: {x: 5.0, y: 3.0, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}"
 ```
 
 ### 2. macOS (맥)
+```bash
+docker-compose -f docker-compose-mac.yaml up --build -d
+docker-compose -f docker-compose-mac.yaml down
+
+# visual code로 도커 컨테이너 접속하여 목표점 주면 자율주행 시작
+ros2 topic pub -1 /ugv1/goal_pose geometry_msgs/msg/PoseStamped "{header: {stamp: {sec: 0, nanosec: 0}, frame_id: 'ugv1/map'}, pose: {position: {x: 2.0, y: 1.0, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}"
+
+ros2 topic pub -1 /ugv2/goal_pose geometry_msgs/msg/PoseStamped "{header: {stamp: {sec: 0, nanosec: 0}, frame_id: 'ugv2/map'}, pose: {position: {x: 5.0, y: 3.0, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}"
+```
 
 네임스페이스 및 tf 문제 해결이 필요함
 
-## 5. 참고 문서 (References)
+## 6. 
+
+## 참고 문서 (References)
 - Webots 공식 사용자 가이드 (User Guide)
 - Webots 공식 레퍼런스 매뉴얼 (Reference Manual)
