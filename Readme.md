@@ -30,13 +30,12 @@ git submodule update --init --recursive
 ## 3. 시뮬레이션 실행 방법 (Usage)
 1. 설치된 **Webots** 프로그램을 실행합니다.
 2. 상단 메뉴에서 `File` -> `Open World...`를 클릭합니다.
-3. `multi_webots/src/Webots-SummitXL/workspace/simulator/worlds` 디렉토리 내의 `worlds` 폴더에 있는 월드 파일(`.wbt`)을 선택하여 엽니다.
+3. `multi_webots/src/Webots-SummitXL/workspace/simulator/worlds` 디렉토리 내의 `worlds` 폴더에 있는 `my_world.wbt` 월드 파일(`.wbt`)을 선택하여 엽니다.
 4. 상단의 **Play** 버튼(또는 `Step` 버튼)을 눌러 시뮬레이션을 시작하고 로봇들의 동작을 확인합니다.
 
-## 5. X11 설치
-도커(Docker)처럼 화면이 없는 환경에서 GUI 프로그램(RViz2, Webots 등)을 띄우려면, 호스트 PC(사용자님의 실제 컴퓨터)에 화면을 그려주는 도화지 역할인 **'X 서버(X Server)'**가 준비
-
-운영체제별로 이 도화지를 깔고 설정하는 방법이 조금씩 다름
+## 4. 로봇 추가 방법 (향후 자동화 예정)
+1. `my_world.wbt` 월드 파일에서 SummitXlSteel을 복사
+2. SummitXlSteel 클릭하여 하위 트리에서 name 변경 (ROS2와 연동할 때 알아서 네임스페이스 생성해줌)
 
 ---
 
@@ -71,6 +70,28 @@ git submodule update --init --recursive
 
 ## 5. 작동 명령어
 
+### 0. 도커 컨테이너 추가
+docker-compose 관련 파일 아래(윈도우 : docker-compose.yml, 맥 : docker-compose-mac.yaml)에 아래처럼 추가해주면 됨
+```docker
+  # 3. UGV2 독립 컨테이너
+  [compose 이름]:
+    <<: *ros-common
+    container_name: [container 이름]
+    environment:
+      - DISPLAY=${DISPLAY:-host.docker.internal:0}
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - ROS_LOCALHOST_ONLY=0
+      - ROS_DOMAIN_ID=30
+      - ROBOT_ID=[Webots에서 설정한 이름]
+    # 🌟 [수정] source 명령어 부활!
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 launch webots_python single_ugv.launch.py"
+    depends_on:
+      - master
+  # 👇 [여기를 추가하세요]
+```
+
 ### 1. Windows (윈도우)
 ```bash
 # 도커 시작 (rviz용, ugb1, ugv2)
@@ -93,6 +114,7 @@ ros2 topic pub -1 /ugv1/goal_pose geometry_msgs/msg/PoseStamped "{header: {stamp
 
 ros2 topic pub -1 /ugv2/goal_pose geometry_msgs/msg/PoseStamped "{header: {stamp: {sec: 0, nanosec: 0}, frame_id: 'ugv2/map'}, pose: {position: {x: 5.0, y: 3.0, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}"
 ```
+---
 
 ## 6. Gemini 연동 (아직 연동 완료 안됨)
 1. webots_python/webots_python/gemini_goal_assigner.py으로 gemini와 ros2 연동
