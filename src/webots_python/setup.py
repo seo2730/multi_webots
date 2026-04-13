@@ -32,7 +32,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'fix_timestamp = webots_python.fix_timestamp:main',
+            # 기존에 있던 노드들이 있다면 유지하고, 아래 줄을 추가하세요.
+            'gemini_goal_assigner = webots_python.gemini_goal_assigner:main',
         ],
     },
 )
