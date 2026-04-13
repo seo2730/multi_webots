@@ -96,7 +96,8 @@ ros2 topic pub -1 /ugv2/goal_pose geometry_msgs/msg/PoseStamped "{header: {stamp
 
 네임스페이스 및 tf 문제 해결이 필요함
 
-## 6. 
+## 6. Gemini 연동 (아직 연동 완료 안됨)
+
 
 ## 참고 문서 (References)
 - Webots 공식 사용자 가이드 (User Guide)
