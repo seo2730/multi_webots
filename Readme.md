@@ -94,8 +94,9 @@ docker-compose 관련 파일 아래(윈도우 : docker-compose.yml, 맥 : docker
 
 ### 1. Windows (윈도우)
 ```bash
-# 도커 시작 (rviz용, ugb1, ugv2)
+# 도커 컨테이너 전체 시작 (rviz용, ugb1, ugv2)
 docker-compose up --build -d
+# 도커 컨테이너 전체 종료
 docker-compose down
 
 # visual code로 도커 컨테이너 접속하여 목표점 주면 자율주행 시작
@@ -106,7 +107,9 @@ ros2 topic pub -1 /ugv2/goal_pose geometry_msgs/msg/PoseStamped "{header: {stamp
 
 ### 2. macOS (맥)
 ```bash
+# 도커 컨테이너 전체 시작
 docker-compose -f docker-compose-mac.yaml up --build -d
+# 도커 컨테이너 전체 종료
 docker-compose -f docker-compose-mac.yaml down
 
 # visual code로 도커 컨테이너 접속하여 목표점 주면 자율주행 시작
