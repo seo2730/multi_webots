@@ -94,10 +94,64 @@ ros2 topic pub -1 /ugv1/goal_pose geometry_msgs/msg/PoseStamped "{header: {stamp
 ros2 topic pub -1 /ugv2/goal_pose geometry_msgs/msg/PoseStamped "{header: {stamp: {sec: 0, nanosec: 0}, frame_id: 'ugv2/map'}, pose: {position: {x: 5.0, y: 3.0, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}"
 ```
 
-네임스페이스 및 tf 문제 해결이 필요함
-
 ## 6. Gemini 연동 (아직 연동 완료 안됨)
+1. webots_python/webots_python/gemini_goal_assigner.py으로 gemini와 ros2 연동
+2. gemini api는 google ai studio에서 생성 가능 (gemini api 생성 방법은 구글링하면 나와있음)
 
+---
+### 1. 현재 코드 시나리오1 (아직 연동 완료 안됨)
+1. 지도 데이터와 로봇 위치를 통해 로봇이 가야할 곳을 할당
+---
+
+## 7. 파이썬 파일을 추가 시 해야할 것
+1. webots_python 패키지(혹은 개인적으로 추가한 패키지)에 있는 setup.py를 수정
+2. entry_points에서 아래 코드 예시처럼 추가한 파이썬 파일 넣으면 됨
+```python
+from glob import glob
+from setuptools import setup
+from setuptools import find_packages, setup
+
+package_name = 'webots_python'
+
+setup(
+    name=package_name,
+    version='0.0.0',
+    packages=find_packages(exclude=['test']),
+    data_files=[
+        ('share/ament_index/resource_index/packages',
+            ['resource/' + package_name]),
+        ('share/' + package_name, ['package.xml']),
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
+        (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz')),
+        (os.path.join('share', package_name, 'urdf'), glob('urdf/*.urdf') + glob('urdf/*.urdf.xacro')),
+    ],
+    install_requires=['setuptools'],
+    zip_safe=True,
+    maintainer='root',
+    maintainer_email='seo2730@naver.com',
+    description='TODO: Package description',
+    license='TODO: License declaration',
+    extras_require={
+        'test': [
+            'pytest',
+        ],
+    },
+    entry_points={
+        'console_scripts': [
+            # 👇 [여기를 추가하세요]
+            # 기존에 있던 노드들이 있다면 유지하고, 아래 줄을 추가하세요.
+            'gemini_goal_assigner = webots_python.gemini_goal_assigner:main',
+        ],
+    },
+)
+```
+
+## 향후 계획
+- Gemini api 연동
+- Spot 추가
+- Drone 추가
+- 지도 생성 및 로봇 생성 자동화
 
 ## 참고 문서 (References)
 - Webots 공식 사용자 가이드 (User Guide)
