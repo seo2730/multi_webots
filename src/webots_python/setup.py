@@ -34,6 +34,9 @@ setup(
         'console_scripts': [
             # 기존에 있던 노드들이 있다면 유지하고, 아래 줄을 추가하세요.
             #'gemini_goal_assigner = webots_python.gemini_goal_assigner:main',
+            'cam_lidar_data_collector = webots_python.cam_lidar_data_collector:main',
+            'summit_telop = webots_python.summit_telop:main',
+            'sim_clock_bridge = webots_python.sim_clock_bridge:main',
         ],
     },
 )
