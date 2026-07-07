@@ -1,0 +1,28 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/swarm/mgs_ws/install/mgs05_utils/include/**",
+        "/home/swarm/mgs_ws/install/mgs05_mp_msgs/include/**",
+        "/home/swarm/mgs_ws/install/mgs05_camera/include/**",
+        "/home/swarm/mgs_ws/install/mgs05_base_msgs/include/**",
+        "/home/swarm/mgs_ws/install/mgs04_base_msgs/include/**",
+        "/home/swarm/mgs_ws/install/mgs02_base_msgs/include/**",
+        "/home/swarm/mgs_ws/install/mgs01_base_msgs/include/**",
+        "/home/swarm/mgs_ws/install/communication_msgs/include/**",
+        "/opt/ros/humble/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ros2",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++17"
+    }
+  ],
+  "version": 4
+}

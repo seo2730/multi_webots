@@ -133,7 +133,19 @@ def launch_setup(context, *args, **kwargs):
         ))
 
         # ---------------------------------------------------------
-        # [D] Navigation2 (회원님의 nav2.launch.py 직접 사용!)
+        # [D] 웹 목표점 중계 (지도 클릭 -> goal_pose)
+        # ---------------------------------------------------------
+        actions.append(Node(
+            package='webots_python',
+            executable='web_goal_relay',
+            name='web_goal_relay',
+            output='screen',
+            namespace=ns,
+            parameters=[{'namespace': ns}],
+        ))
+
+        # ---------------------------------------------------------
+        # [E] Navigation2 (회원님의 nav2.launch.py 직접 사용!)
         # ---------------------------------------------------------
         # actions.append(IncludeLaunchDescription(
         #     PythonLaunchDescriptionSource(os.path.join(navigation_pkg_dir, 'launch', 'nav2.launch.py')),

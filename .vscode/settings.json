@@ -1,0 +1,25 @@
+{
+    "ROS2.distro": "humble",
+    "python.autoComplete.extraPaths": [
+        "/home/swarm/mgs_ws/install/ros_tcp_endpoint/lib/python3.10/site-packages",
+        "/home/swarm/mgs_ws/install/mgs05_mp_msgs/local/lib/python3.10/dist-packages",
+        "/home/swarm/mgs_ws/install/mgs05_base_msgs/local/lib/python3.10/dist-packages",
+        "/home/swarm/mgs_ws/install/mgs04_base_msgs/local/lib/python3.10/dist-packages",
+        "/home/swarm/mgs_ws/install/mgs02_base_msgs/local/lib/python3.10/dist-packages",
+        "/home/swarm/mgs_ws/install/mgs01_base_msgs/local/lib/python3.10/dist-packages",
+        "/home/swarm/mgs_ws/install/communication_msgs/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/swarm/mgs_ws/install/ros_tcp_endpoint/lib/python3.10/site-packages",
+        "/home/swarm/mgs_ws/install/mgs05_mp_msgs/local/lib/python3.10/dist-packages",
+        "/home/swarm/mgs_ws/install/mgs05_base_msgs/local/lib/python3.10/dist-packages",
+        "/home/swarm/mgs_ws/install/mgs04_base_msgs/local/lib/python3.10/dist-packages",
+        "/home/swarm/mgs_ws/install/mgs02_base_msgs/local/lib/python3.10/dist-packages",
+        "/home/swarm/mgs_ws/install/mgs01_base_msgs/local/lib/python3.10/dist-packages",
+        "/home/swarm/mgs_ws/install/communication_msgs/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ]
+}

@@ -109,7 +109,17 @@ def generate_launch_description():
     )
 
     # ---------------------------------------------------------
-    # 🌟 [E] Navigation2 (Nav2) 추가!
+    # [E] 웹 목표점 중계 (지도 클릭 -> goal_pose)
+    # ---------------------------------------------------------
+    web_goal_relay_node = Node(
+        package='webots_python',
+        executable='web_goal_relay',
+        namespace=ns,
+        parameters=[{'namespace': ns}],
+    )
+
+    # ---------------------------------------------------------
+    # 🌟 [F] Navigation2 (Nav2) 추가!
     # ---------------------------------------------------------
     nav2_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(navigation_pkg_dir, 'launch', 'nav2.launch.py')),
@@ -134,5 +144,6 @@ def generate_launch_description():
         webots_driver_node,
         pc_to_scan_node,
         slam_node,
+        web_goal_relay_node,
         delayed_nav2_launch # 🌟 지연된 Nav2 사용
     ])

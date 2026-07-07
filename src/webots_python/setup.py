@@ -37,6 +37,7 @@ setup(
             'cam_lidar_data_collector = webots_python.cam_lidar_data_collector:main',
             'summit_telop = webots_python.summit_telop:main',
             'sim_clock_bridge = webots_python.sim_clock_bridge:main',
+            'web_goal_relay = webots_python.web_goal_relay:main',
         ],
     },
 )
