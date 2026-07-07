@@ -112,7 +112,7 @@ def generate_launch_description():
     # [E] 웹 목표점 중계 (지도 클릭 -> goal_pose)
     # ---------------------------------------------------------
     web_goal_relay_node = Node(
-        package='webots_python',
+        package='webots_goal_bridge',
         executable='web_goal_relay',
         namespace=ns,
         parameters=[{'namespace': ns}],

@@ -2,14 +2,15 @@ version: '3.8'
 
 x-mac-common: &mac-common
   build:
-    context: .
-    dockerfile: Dockerfile_mac
+    context: ../..
+    dockerfile: docker-configs/mac/Dockerfile
   # 🚨 Mac에서는 network_mode: "host" 사용 시 6080 포트 접속이 불가능해집니다.
   # 기본 네트워크를 사용해도 ROS 2 컨테이너 간 통신은 정상적으로 이루어집니다.
   shm_size: '1gb'
-  # 🚨 코드를 수정할 때마다 빌드(docker-compose build)하는 방식을 쓰신다면 주석 처리하세요.
+  # 🌟 colcon build --symlink-install 덕분에, 여기에 최신 소스를 마운트하면
+  # 파이썬 노드는 재빌드 없이 바로 반영됩니다 (C++ 노드는 재빌드 필요).
   volumes:
-    - ./src:/ros2_ws/src
+    - ../../src:/ros2_ws/src
   environment:
     - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
     - ROS_LOCALHOST_ONLY=0 
@@ -19,7 +20,7 @@ services:
   # 1. 마스터 관제 컨테이너 (VNC & RViz2)
   master:
     <<: *mac-common
-    container_name: rviz_master_mac
+    container_name: camera_lidar_master_mac
     ports:
       - "6080:6080" # 🌟 브라우저에서 localhost:6080 접속
     environment: # YAML 문법상 재정의 시 덮어쓰므로 필요한 설정을 모두 명시합니다.
@@ -38,25 +39,11 @@ services:
   # 2. UGV1 독립 컨테이너
   ugv1:
     <<: *mac-common
-    container_name: ugv1_brain_mac
+    container_name: camera_lidar_ugv1_mac
     environment:
       - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
       - ROS_LOCALHOST_ONLY=0
       - ROS_DOMAIN_ID=30
-      - ROBOT_ID=ugv1
-    command: >
-      bash -c "source /ros2_ws/install/setup.bash &&
-               ros2 launch webots_python single_ugv.launch.py"
-
-  # 3. UGV2 독립 컨테이너
-  ugv2:
-    <<: *mac-common
-    container_name: ugv2_brain_mac
-    environment:
-      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-      - ROS_LOCALHOST_ONLY=0
-      - ROS_DOMAIN_ID=30
-      - ROBOT_ID=ugv2
-    command: >
-      bash -c "source /ros2_ws/install/setup.bash &&
-               ros2 launch webots_python single_ugv.launch.py"
+      - ROBOT_ID=SummitXLSteel
+    tty: true
+    stdin_open: true

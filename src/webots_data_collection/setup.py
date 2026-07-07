@@ -1,9 +1,8 @@
 import os
 from glob import glob
-from setuptools import setup
 from setuptools import find_packages, setup
 
-package_name = 'webots_python'
+package_name = 'webots_data_collection'
 
 setup(
     name=package_name,
@@ -13,17 +12,13 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        # 👇 [여기를 추가하세요] config 폴더 안의 모든 yaml 파일을 복사합니다.
-        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
-        (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz')),
-        (os.path.join('share', package_name, 'urdf'), glob('urdf/*.urdf') + glob('urdf/*.urdf.xacro')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='root',
     maintainer_email='seo2730@naver.com',
-    description='TODO: Package description',
+    description='Camera-LiDAR synchronized data collection and KITTI dataset conversion',
     license='TODO: License declaration',
     extras_require={
         'test': [
@@ -32,8 +27,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'summit_telop = webots_python.summit_telop:main',
-            'sim_clock_bridge = webots_python.sim_clock_bridge:main',
+            'cam_lidar_data_collector = webots_data_collection.cam_lidar_data_collector:main',
         ],
     },
 )

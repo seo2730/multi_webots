@@ -25,8 +25,8 @@
     # 맵 설정 (연산 부하를 줄이기 위해 간격을 살짝 넓힙니다)
     map_update_interval: 1.0       # 너무 빠르면 버벅임 (0.1 -> 1.0 추천)
     resolution: 0.1              # 일반적인 Nav2 해상도
-    minimum_travel_distance: 0.2
-    minimum_travel_heading: 0.2
+    minimum_travel_distance: 0.0
+    minimum_travel_heading: 0.0
 
     # 기타 권장 설정
     transform_timeout: 0.5         # 다중 로봇 렉(지연)을 고려해 넉넉하게 0.5초 부여

@@ -2,8 +2,8 @@ version: '3.8'
 
 x-mac-common: &mac-common
   build:
-    context: ..
-    dockerfile: docker-configs/Dockerfile.mac
+    context: ../..
+    dockerfile: docker-configs/mac/Dockerfile
   # 🚨 Mac에서는 network_mode: "host" 사용 시 6080 포트 접속이 불가능해집니다.
   # 기본 네트워크를 사용해도 ROS 2 컨테이너 간 통신은 정상적으로 이루어집니다.
   shm_size: '1gb'

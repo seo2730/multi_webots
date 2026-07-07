@@ -1,1 +1,2 @@
-src/Webots-SummitXL
+# VS Code C/C++ 확장 브라우징 캐시 (로컬 전용, 용량 큼)
+.vscode/browse.vc.db*

@@ -7,7 +7,7 @@ import numpy as np
 # 1. 센서 및 경로 설정 (연구원님 환경에 맞게 수정!)
 # ==========================================
 # 폴더 경로 설정
-INPUT_LABEL_DIR = '../dataset_output/label_2' # Webots에서 수집한 원본 텍스트 폴더
+INPUT_LABEL_DIR = './dataset_output/label_2'  # Webots에서 수집한 원본 텍스트 폴더
 OUTPUT_LABEL_DIR = './training/label_2'       # KITTI 규격으로 저장될 라벨 폴더
 OUTPUT_CALIB_DIR = './training/calib'         # 자동 생성될 캘리브레이션 폴더
 

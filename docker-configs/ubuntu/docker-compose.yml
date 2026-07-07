@@ -4,16 +4,28 @@ version: '3.8'
 #   xhost +local:root
 # DISPLAY 환경변수는 보통 호스트 셸에 이미 설정되어 있습니다 (echo $DISPLAY 로 확인, 보통 :0 또는 :1).
 
+# 🌉 [네트워크 모드: bridge] network_mode: host 대신 도커 기본 bridge 네트워크를 씁니다.
+# host 모드로 묶으면 컨테이너와 호스트가 같은 IP로 보여서, FastRTPS가 "같은 머신"이라고 판단해
+# 공유메모리(SHM) 전송을 시도합니다. 근데 컨테이너는 root, 호스트는 일반 유저라 uid가 안 맞아서
+# SHM 핸드셰이크가 실패하고, 결과적으로 호스트(또는 별도 웹서버 등 외부 프로세스)에서
+# ros2 topic list는 되는데 echo/hz로 실제 데이터는 못 받는 문제가 있었습니다.
+# bridge로 컨테이너마다 별도 IP를 주면 FastRTPS가 "다른 머신"으로 인식해서 SHM을 안 쓰고
+# UDP로만 통신하게 되어 이 문제가 해결됩니다 (실측: 호스트에서 /clock, /odom 정상 수신 확인).
+networks:
+  ros_bridge:
+    driver: bridge
+
 x-ros-common: &ros-common
   build:
-    context: ..
-    dockerfile: docker-configs/Dockerfile.ubuntu
-  network_mode: "host"
+    context: ../..
+    dockerfile: docker-configs/ubuntu/Dockerfile
+  networks:
+    - ros_bridge
   ipc: host
   pid: host
   # 🌟 host.docker.internal은 Docker Desktop(윈도우/맥) 전용 별칭이라 리눅스 Docker Engine엔 기본 등록이 안 됩니다.
   # launch 파일들이 WEBOTS_CONTROLLER_URL에서 host.docker.internal을 그대로 쓰므로, 코드 수정 없이
-  # host-gateway로 별칭만 만들어 줍니다 (Docker 20.10+).
+  # host-gateway로 별칭만 만들어 줍니다 (Docker 20.10+). bridge 모드에서도 그대로 필요합니다.
   extra_hosts:
     - "host.docker.internal:host-gateway"
   # 🌟 리눅스 네이티브 X11은 TCP가 아니라 유닉스 소켓(/tmp/.X11-unix)을 쓰므로 반드시 볼륨으로 공유해야 합니다.
@@ -34,6 +46,10 @@ services:
     <<: *ros-common
     container_name: rviz_master_ubuntu
     environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - ROS_LOCALHOST_ONLY=0
       - ROS_DOMAIN_ID=30
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&

@@ -32,9 +32,9 @@ class SparseLIFDataCollector(Node):
         
         # 🌟 안전한 절대 경로 설정 (도커 워크스페이스 기준)
         workspace_path = '/ros2_ws'
-        package_name = 'webots_python'
-        
-        # 결과: /ros2_ws/src/webots_python/dataset_output
+        package_name = 'webots_data_collection'
+
+        # 결과: /ros2_ws/src/webots_data_collection/dataset_output
         self.base_path = os.path.join(workspace_path, 'src', package_name, 'dataset_output')
         
         # 저장 경로 생성

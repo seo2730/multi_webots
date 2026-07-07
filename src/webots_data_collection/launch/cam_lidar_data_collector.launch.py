@@ -75,7 +75,7 @@ def generate_launch_description():
     )
 
     data_collector_node = Node(
-        package='webots_python',
+        package='webots_data_collection',
         executable='cam_lidar_data_collector',
         name=f'{ns}_cam_lidar_data_collector',
         namespace=ns,

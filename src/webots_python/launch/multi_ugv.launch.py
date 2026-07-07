@@ -136,7 +136,7 @@ def launch_setup(context, *args, **kwargs):
         # [D] 웹 목표점 중계 (지도 클릭 -> goal_pose)
         # ---------------------------------------------------------
         actions.append(Node(
-            package='webots_python',
+            package='webots_goal_bridge',
             executable='web_goal_relay',
             name='web_goal_relay',
             output='screen',
