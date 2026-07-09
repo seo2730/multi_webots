@@ -1,5 +1,26 @@
 # Webots를 활용한 다중 로봇 시뮬레이션
 
+## 목차
+- [0. 사전 요구 사항 (Prerequisites)](#0-사전-요구-사항-prerequisites)
+- [1. Webots 설치](#1-webots-설치)
+- [2. 설치 및 구성 (Installation)](#2-설치-및-구성-installation)
+- [3. 시뮬레이션 실행 방법 (Usage)](#3-시뮬레이션-실행-방법-usage)
+- [4. 로봇 추가 방법 (향후 자동화 예정)](#4-로봇-추가-방법-향후-자동화-예정)
+- [5. 도커 컨테이너 화면(GUI) 띄우기 — OS별 사전 준비](#5-도커-컨테이너-화면gui-띄우기--os별-사전-준비)
+  - [5-1. Ubuntu (우분투 / 리눅스)](#5-1-ubuntu-우분투--리눅스--신규-지원-테스트-완료)
+  - [5-2. Windows (윈도우)](#5-2-windows-윈도우)
+  - [5-3. macOS (맥)](#5-3-macos-맥)
+- [6. 실행 명령어 (Docker Compose)](#6-실행-명령어-docker-compose)
+  - [6-1. OS별 실행 명령어](#6-1-os별-실행-명령어)
+  - [6-2. 공통 명령어 (모든 OS 동일)](#6-2-공통-명령어-모든-os-동일)
+- [7. 로봇 위치 및 맵 데이터](#7-로봇-위치-및-맵-데이터)
+- [8. 외부 연동 (웹 목표점 / Gemini)](#8-외부-연동-웹-목표점--gemini)
+  - [8-1. 맵/목표점 데이터 규격 (웹 개발자용)](#8-1-맵목표점-데이터-규격-웹-개발자용)
+  - [8-2. Windows 네트워킹 참고사항 (웹 개발자용)](#8-2-windows-네트워킹-참고사항-웹-개발자용)
+- [9. 파이썬 파일을 추가 시 해야할 것](#9-파이썬-파일을-추가-시-해야할-것)
+- [향후 계획](#향후-계획)
+- [참고 문서 (References)](#참고-문서-references)
+
 ## 0. 사전 요구 사항 (Prerequisites)
 - 호스트 장치 운영체제 : 윈도우, Mac, **Ubuntu(리눅스, 신규 지원)**
 - 도커 베이스 이미지 : Ubuntu 22.04 (ROS 2 Humble)
@@ -10,11 +31,11 @@
 시뮬레이션을 원활하게 실행하기 위해 시스템에 Webots가 설치 필요
 - **Webots 다운로드**: [Cyberbotics 공식 홈페이지](https://cyberbotics.com/)에서 운영체제에 맞는 **2025a** 버전을 다운로드하여 설치
 - **Webots 클라우드 공유 및 정보**: [https://webots.cloud/](https://webots.cloud/)
-  - 오픈되어 있는 asset를 쓸 수 있음 
+  - 오픈되어 있는 asset를 쓸 수 있음
 
 ## 2. 설치 및 구성 (Installation)
 
-본 워크스페이스는 여러 ROS 2 패키지와 **Git 서브모듈(Submodule)**을 포함 
+본 워크스페이스는 여러 ROS 2 패키지와 **Git 서브모듈(Submodule)**을 포함
 
 터미널에서 다음 명령어를 통해 저장소를 클론하고 서브모듈을 초기화
 
@@ -28,10 +49,10 @@ git submodule update --init --recursive
 ```
 
 ## 3. 시뮬레이션 실행 방법 (Usage)
-1. 설치된 **Webots** 프로그램을 실행합니다.
-2. 상단 메뉴에서 `File` -> `Open World...`를 클릭합니다.
-3. `multi_webots/src/Webots-SummitXL/workspace/simulator/worlds` 디렉토리 내의 `worlds` 폴더에 있는 `my_world.wbt` 월드 파일(`.wbt`)을 선택하여 엽니다.
-4. 상단의 **Play** 버튼(또는 `Step` 버튼)을 눌러 시뮬레이션을 시작하고 로봇들의 동작을 확인합니다.
+1. 설치된 **Webots** 프로그램 실행
+2. 상단 메뉴에서 `File` -> `Open World...` 클릭
+3. `multi_webots/src/Webots-SummitXL/workspace/simulator/worlds` 디렉토리 내의 `worlds` 폴더에 있는 `my_world.wbt` 월드 파일(`.wbt`) 선택해서 열기
+4. 상단의 **Play** 버튼(또는 `Step` 버튼)을 눌러 시뮬레이션 시작 후 로봇들의 동작 확인
 
 ## 4. 로봇 추가 방법 (향후 자동화 예정)
 1. `my_world.wbt` 월드 파일에서 SummitXlSteel을 복사
@@ -39,58 +60,98 @@ git submodule update --init --recursive
 
 ---
 
-### 1. Ubuntu (우분투 / 리눅스) — 신규 지원, 테스트 완료
-Docker Engine이 설치된 우분투 데스크탑에서 바로 동작합니다 (X11 네이티브, VNC 불필요).
+## 5. 도커 컨테이너 화면(GUI) 띄우기 — OS별 사전 준비
+
+rviz2 같은 GUI 프로그램은 컨테이너 안에서 실행되기 때문에, **호스트 화면으로 그 화면을 받아오는 방법**이 OS마다 다름. 아래는 "화면을 띄우기 위한 사전 준비"만 다루고, 실제 `docker compose` 실행 명령어는 [6. 실행 명령어](#6-실행-명령어-docker-compose)에 따로 모아둠.
+
+### 5-1. Ubuntu (우분투 / 리눅스) — 신규 지원, 테스트 완료
+Docker Engine이 설치된 우분투 데스크탑에서 바로 동작 (X11 네이티브, VNC 불필요)
 
 1. **사전 준비 (최초 1회, 또는 재부팅할 때마다):** 호스트 X 서버가 컨테이너(root)의 화면 출력을 받아주도록 허용
    ```bash
    xhost +local:root
    ```
-2. `echo $DISPLAY`로 현재 디스플레이 번호를 확인 (보통 `:0` 또는 `:1`). 대부분 이미 설정되어 있어서 별도 조치 불필요.
-3. Docker Engine이 없다면 [공식 문서](https://docs.docker.com/engine/install/ubuntu/)를 따라 설치 (Docker Desktop이 아니어도 됩니다).
+2. `echo $DISPLAY`로 현재 디스플레이 번호 확인 (보통 `:0` 또는 `:1`). 대부분 이미 설정되어 있어서 별도 조치 불필요.
+3. Docker Engine이 없다면 [공식 문서](https://docs.docker.com/engine/install/ubuntu/)를 따라 설치 (Docker Desktop이 아니어도 됨)
 
-> 우분투용 컨테이너는 도커 기본 **bridge 네트워크**를 씁니다 (`network_mode: host`가 아님). 컨테이너와 호스트를 같은 네트워크로 묶으면 FastRTPS가 "같은 머신"으로 착각해서 공유메모리(SHM) 전송을 시도하다가, 컨테이너(root)와 호스트(일반 유저)의 권한이 안 맞아 호스트에서 `ros2 topic echo`가 안 되는 문제가 있었습니다. bridge로 컨테이너마다 별도 IP를 주면 이 문제가 해결됩니다.
+> 우분투용 컨테이너는 도커 기본 **bridge 네트워크**를 씀 (`network_mode: host`가 아님). 컨테이너와 호스트를 같은 네트워크로 묶으면 FastRTPS가 "같은 머신"으로 착각해서 공유메모리(SHM) 전송을 시도하다가, 컨테이너(root)와 호스트(일반 유저)의 권한이 안 맞아 호스트에서 `ros2 topic echo`가 안 되는 문제가 있었음. bridge로 컨테이너마다 별도 IP를 주면 이 문제가 해결됨.
 
----
+### 5-2. Windows (윈도우)
+윈도우는 기본적으로 X11을 지원하지 않기 때문에, X 서버 역할을 해줄 외부 프로그램 설치 필요
 
-### 2. Windows (윈도우)
-윈도우는 기본적으로 X11을 지원하지 않기 때문에, X 서버 역할을 해줄 외부 프로그램을 설치해야 합니다. 
-
-1. **설치:** [VcXsrv](https://github.com/marchaesen/vcxsrv)를 깃허브에 접속하여 Release를 클릭한 뒤 최신 exe 파일을 다운받아 설치한다.
-2. **실행 (XLaunch):** 시작 메뉴에서 `XLaunch`를 실행한다.
+1. **설치:** [VcXsrv](https://github.com/marchaesen/vcxsrv)를 깃허브에 접속하여 Release를 클릭한 뒤 최신 exe 파일을 다운받아 설치
+2. **실행 (XLaunch):** 시작 메뉴에서 `XLaunch` 실행
 3. **설정 단계 (매우 중요):**
    * **Display settings:** `Multiple windows` 선택, Display number에 `0` 입력
    * **Client startup:** `Start no client` 선택
-   * **Extra settings:** * `Clipboard`, `Primary Selection` 체크
+   * **Extra settings:**
+     * `Clipboard`, `Primary Selection` 체크
      * `Native opengl` **체크 해제** (3D 프로그램 충돌 방지)
-     * 🌟 **`Disable access control` 체크 (필수!)** -> 도커의 화면 신호를 거부하지 않고 받기 위함입니다.
-4. **마무리:** 다음을 눌러 실행합니다. (작업표시줄 우측 하단 트레이에 `X` 모양 아이콘이 떠 있으면 성공입니다.)
+     * 🌟 **`Disable access control` 체크 (필수!)** -> 도커의 화면 신호를 거부하지 않고 받기 위함
+4. **마무리:** 다음을 눌러 실행. (작업표시줄 우측 하단 트레이에 `X` 모양 아이콘이 떠 있으면 성공)
 5. **호스트 장치를 킬 때마다 계속 작동시켜줘야함**
 
----
+> Windows용 컨테이너도 우분투와 동일하게 도커 기본 **bridge 네트워크**(`windows_ros_bridge`)를 씀. 원래는 `network_mode: host`였으나, Docker Desktop for Windows는 host 모드를 줘도 실제 Windows 네트워크가 아니라 Docker Desktop 내부 VM 네트워크에 격리되어 호스트(크롬 등)에서 컨테이너 포트로 아예 접속이 안 되는 문제가 있어 bridge로 전환함. 자세한 배경은 [8-2. Windows 네트워킹 참고사항 (웹 개발자용)](#8-2-windows-네트워킹-참고사항-웹-개발자용)에 정리.
 
-### 3. macOS (맥)
-현재 맥에서 X11 - rviz2 연동이 상당히 불안한 관계로 vnc로 설치
+### 5-3. macOS (맥)
+현재 맥에서 X11 - rviz2 연동이 상당히 불안한 관계로 VNC로 설치
 
 1. 브라우저에서 **http://localhost:6080** 접속 후 **vnc.html** 클릭
 2. 화면 한 가운데 Connect 클릭
 
 ---
 
-## 5. 작동 명령어
+## 6. 실행 명령어 (Docker Compose)
 
-도커 관련 파일은 전부 **`docker-configs/` 아래 OS별 폴더**로 정리되어 있습니다.
+도커 관련 파일은 전부 **`docker-configs/` 아래 OS별 폴더**로 정리되어 있음.
 ```
 docker-configs/
-├── ubuntu/   Dockerfile, docker-compose.yml   (신규, bridge 네트워크)
-├── windows/  Dockerfile, docker-compose.yml   (network_mode: host)
+├── ubuntu/   Dockerfile, docker-compose.yml   (bridge 네트워크)
+├── windows/  Dockerfile, docker-compose.yml   (bridge 네트워크)
 ├── mac/      Dockerfile, docker-compose.yml   (VNC, bridge 네트워크)
 └── camera-lidar/  docker-compose.yml          (카메라-라이다 데이터 수집 전용, 현재 맥 기준)
 ```
-(예전엔 저장소 루트에 `Dockerfile`, `docker-compose.yml`, `Dockerfile_mac`, `docker-compose-mac.yaml`이 흩어져 있었는데, 지금은 전부 여기로 옮겨졌습니다.)
+(예전엔 저장소 루트에 `Dockerfile`, `docker-compose.yml`, `Dockerfile_mac`, `docker-compose-mac.yaml`이 흩어져 있었는데, 지금은 전부 여기로 옮김.)
 
-### 0. 도커 컨테이너 추가
-로봇을 추가하려면 `docker-configs/<OS>/docker-compose.yml`에 아래처럼 서비스를 하나 더 추가하면 됨
+### 6-1. OS별 실행 명령어
+
+**Ubuntu**
+```bash
+# 사전 준비 (최초 1회 / 재부팅 후) - 5-1 참고
+xhost +local:root
+
+docker compose -f docker-configs/ubuntu/docker-compose.yml up --build -d   # 전체 시작
+docker compose -f docker-configs/ubuntu/docker-compose.yml down             # 전체 종료
+```
+
+**Windows**
+```bash
+docker compose -f docker-configs/windows/docker-compose.yml up --build -d   # 전체 시작
+docker compose -f docker-configs/windows/docker-compose.yml down             # 전체 종료
+```
+(화면 띄우기는 5-2의 VcXsrv 사전 준비가 먼저 되어 있어야 함)
+
+**macOS**
+```bash
+docker compose -f docker-configs/mac/docker-compose.yml up --build -d   # 전체 시작
+docker compose -f docker-configs/mac/docker-compose.yml down             # 전체 종료
+```
+(화면 확인은 5-3의 http://localhost:6080 접속)
+
+**카메라-라이다 데이터 수집 (맥 전용, 현재)**
+`webots_data_collection` 패키지가 담당하며, `docker-configs/camera-lidar/docker-compose.yml`을 씀 (같은 `docker-configs/mac/Dockerfile` 이미지 재사용)
+```bash
+docker compose -f docker-configs/camera-lidar/docker-compose.yml up --build -d
+```
+수집된 원본 데이터는 `src/webots_data_collection/dataset_output/`에, KITTI 포맷 변환 결과는 `src/webots_data_collection/training/`에 쌓임. 변환은 컨테이너 안이 아니라 아래처럼 직접 실행:
+```bash
+cd src/webots_data_collection
+python3 scripts/webots2kitti.py
+```
+
+### 6-2. 공통 명령어 (모든 OS 동일)
+
+**로봇 추가**: `docker-configs/<OS>/docker-compose.yml`에 아래처럼 서비스를 하나 더 추가하면 됨
 ```yaml
   # 4. UGV3 독립 컨테이너 (예시)
   [compose 이름]:
@@ -109,76 +170,73 @@ docker-configs/
       - master
 ```
 
-### 1. Ubuntu (우분투)
+**목표점을 주면 자율주행 시작** (OS 상관없이 동일한 명령어; 컨테이너 안에서 실행하거나, 호스트 ROS 2 환경변수를 맞췄다면 호스트에서 바로 실행 가능):
 ```bash
-# 사전 준비 (최초 1회 / 재부팅 후)
-xhost +local:root
-
-# 도커 컨테이너 전체 시작 (rviz용, ugv1, ugv2)
-docker compose -f docker-configs/ubuntu/docker-compose.yml up --build -d
-# 도커 컨테이너 전체 종료
-docker compose -f docker-configs/ubuntu/docker-compose.yml down
-
-# 목표점을 주면 자율주행 시작
 ros2 topic pub -1 /ugv1/goal_pose geometry_msgs/msg/PoseStamped "{header: {stamp: {sec: 0, nanosec: 0}, frame_id: 'ugv1/map'}, pose: {position: {x: 2.0, y: 1.0, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}"
 
 ros2 topic pub -1 /ugv2/goal_pose geometry_msgs/msg/PoseStamped "{header: {stamp: {sec: 0, nanosec: 0}, frame_id: 'ugv2/map'}, pose: {position: {x: 5.0, y: 3.0, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}"
 ```
 
-**호스트에서 직접 `ros2 topic list`/`echo`로 확인하고 싶다면**, 호스트 쉘의 ROS 2 환경변수도 컨테이너와 맞춰줘야 합니다 (`~/.bashrc`에 추가):
+**호스트에서 직접 `ros2 topic list`/`echo`로 확인하고 싶다면**, 호스트 쉘의 ROS 2 환경변수도 컨테이너와 맞춰줘야 함 (`~/.bashrc` 등에 추가):
 ```bash
 export ROS_DOMAIN_ID=30
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 export ROS_LOCALHOST_ONLY=0
 ```
 
-### 2. Windows (윈도우)
-```bash
-# 도커 컨테이너 전체 시작 (rviz용, ugv1, ugv2)
-docker compose -f docker-configs/windows/docker-compose.yml up --build -d
-# 도커 컨테이너 전체 종료
-docker compose -f docker-configs/windows/docker-compose.yml down
+---
 
-# visual code로 도커 컨테이너 접속하여 목표점 주면 자율주행 시작
-ros2 topic pub -1 /ugv1/goal_pose geometry_msgs/msg/PoseStamped "{header: {stamp: {sec: 0, nanosec: 0}, frame_id: 'ugv1/map'}, pose: {position: {x: 2.0, y: 1.0, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}"
+## 7. 로봇 위치 및 맵 데이터
 
-ros2 topic pub -1 /ugv2/goal_pose geometry_msgs/msg/PoseStamped "{header: {stamp: {sec: 0, nanosec: 0}, frame_id: 'ugv2/map'}, pose: {position: {x: 5.0, y: 3.0, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}"
-```
+- **정적 맵 파일은 없음.** `map_server`/`amcl`을 쓰지 않고, 각 로봇이 SLAM Toolbox(`mode: mapping`, [config/mapper_params_online_async.yaml](src/webots_python/config/mapper_params_online_async.yaml))로 **자기 맵을 실시간으로 직접 생성**. Nav2도 이 실시간 맵을 그대로 사용.
+- **로봇마다 맵이 완전히 독립적.** 프레임 이름 규칙:
+  | 항목 | 프레임/토픽 |
+  |---|---|
+  | 맵 프레임 | `{ns}/map` (예: `ugv1/map`, `ugv2/map`) |
+  | 오돔 프레임 | `{ns}/odom` |
+  | 로봇 기준 프레임 | `{ns}/base_link` |
+  | 맵 토픽 | `/{ns}/map` |
+  | 목표점 토픽 | `/{ns}/goal_pose` (`geometry_msgs/msg/PoseStamped`) |
 
-### 3. macOS (맥)
-```bash
-# 도커 컨테이너 전체 시작
-docker compose -f docker-configs/mac/docker-compose.yml up --build -d
-# 도커 컨테이너 전체 종료
-docker compose -f docker-configs/mac/docker-compose.yml down
-
-# visual code로 도커 컨테이너 접속하여 목표점 주면 자율주행 시작
-ros2 topic pub -1 /ugv1/goal_pose geometry_msgs/msg/PoseStamped "{header: {stamp: {sec: 0, nanosec: 0}, frame_id: 'ugv1/map'}, pose: {position: {x: 2.0, y: 1.0, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}"
-
-ros2 topic pub -1 /ugv2/goal_pose geometry_msgs/msg/PoseStamped "{header: {stamp: {sec: 0, nanosec: 0}, frame_id: 'ugv2/map'}, pose: {position: {x: 5.0, y: 3.0, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}"
-```
-
-### 4. 카메라-라이다 데이터 수집 (맥 전용, 현재)
-`webots_data_collection` 패키지가 담당하며, `docker-configs/camera-lidar/docker-compose.yml`을 씁니다 (같은 `docker-configs/mac/Dockerfile` 이미지를 재사용).
-```bash
-docker compose -f docker-configs/camera-lidar/docker-compose.yml up --build -d
-```
-수집된 원본 데이터는 `src/webots_data_collection/dataset_output/`에, KITTI 포맷 변환 결과는 `src/webots_data_collection/training/`에 쌓입니다. 변환은 컨테이너 안이 아니라 아래처럼 직접 실행합니다:
-```bash
-cd src/webots_data_collection
-python3 scripts/webots2kitti.py
-```
+  즉 `ugv1`과 `ugv2`는 서로 다른 좌표계를 쓰며, 한 로봇의 좌표를 다른 로봇에 그대로 써도 안 맞음.
+- **목표점 좌표는 월드 절대좌표가 아니라 각 로봇 자신의 map 프레임 기준.** SLAM이 매핑을 시작하는 시점(로봇 스폰 시점) 근처가 대략 그 로봇 map 프레임의 원점(0,0)이 됨.
+- **Webots 월드(`my_world.wbt`) 상의 초기 스폰 위치** (참고용, world 절대좌표):
+  | 로봇 | world x, y |
+  |---|---|
+  | ugv1 | -6.16, 1.26 |
+  | ugv2 | 8.38, 1.37 |
+- 웹에서 지도 클릭으로 목표점을 보낼 때는 `/web/goal_point`(`geometry_msgs/msg/PointStamped`)로 발행하되, **`frame_id`가 정확히 `{ns}/map`이어야** [web_goal_relay.py](src/webots_goal_bridge/webots_goal_bridge/web_goal_relay.py)가 해당 로봇의 `goal_pose`로 중계함 (다른 frame_id는 무시됨).
 
 ---
 
-## 6. 외부 연동 (웹 목표점 / Gemini)
-`webots_goal_bridge` 패키지가 담당합니다.
+## 8. 외부 연동 (웹 목표점 / Gemini)
+`webots_goal_bridge` 패키지가 담당.
 1. `web_goal_relay.py` — 웹에서 지도 클릭으로 보낸 목표점(`/web/goal_point`)을 로봇의 `goal_pose`로 중계 (동작 중)
 2. `gemini_goal_assigner.py` — Gemini와 연동해 지도/위치 기반으로 다음 목표를 자동 할당 (**아직 연동 완료 안됨**, `setup.py`의 entry_point도 주석 처리되어 있음)
    - gemini api는 google ai studio에서 생성 가능 (gemini api 생성 방법은 구글링하면 나와있음)
 
-## 7. 파이썬 파일을 추가 시 해야할 것
-패키지가 목적별로 나뉘어 있으니, 새 노드가 어디에 속하는지 먼저 정하세요.
+### 8-1. 맵/목표점 데이터 규격 (웹 개발자용)
+웹에서 지도를 그리거나 목표점을 보낼 때 참고할 규격은 [7. 로봇 위치 및 맵 데이터](#7-로봇-위치-및-맵-데이터) 참고. 요약:
+- 로봇별로 맵/좌표계가 완전히 분리되어 있으니, UI에서 "어느 로봇의 맵을 보고 있는지"를 항상 구분해서 표시해야 함
+- 클릭한 좌표를 보낼 때 `frame_id`를 `{선택된 로봇}/map`으로 정확히 채워야 함
+
+### 8-2. Windows 네트워킹 참고사항 (웹 개발자용)
+
+Windows 환경에서 Docker로 ROS 2를 돌리면서 실측으로 확인한 내용. 웹 중계 서비스(웹소켓/rosbridge 등)를 어디에 배치할지 정할 때 참고.
+
+**결론**
+- **컨테이너끼리는 ROS 2 DDS 통신이 정상 동작** (`ugv1` ↔ `ugv2` 목표점 전달 실측 확인됨).
+- **컨테이너가 아닌 네이티브 Windows 프로세스에서는 DDS discovery(멀티캐스트)가 안 됨.** Docker Desktop이 WSL2 미러링 네트워킹(`.wslconfig`의 `networkingMode=mirrored`)과 "Host Networking" 옵션을 모두 켜도, 컨테이너는 여전히 Docker Desktop 내부 VM 네트워크(`192.168.65.x`)에 격리되어 있어 실제 Windows에서 보낸 UDP 멀티캐스트 패킷이 컨테이너까지 도달하지 못하는 것을 직접 테스트로 확인함. (DDS 벤더를 FastDDS 대신 OpenDDS 등으로 바꿔도 이건 네트워크 계층 문제라 동일하게 막힘.)
+- **HTTP/WebSocket 같은 단순 TCP 서비스는 얘기가 다름.** 컨테이너를 **bridge 네트워크**에 놓고 `docker-compose.yml`의 `ports:`에 포트를 명시적으로 publish하면, Docker Desktop이 자동으로 `localhost:<포트>`를 통해 Windows 호스트(크롬 포함)에서 접속 가능. 이것도 실측으로 확인함.
+- 그래서 지금 `docker-configs/windows/docker-compose.yml`을 `network_mode: host`에서 **bridge 네트워크(`windows_ros_bridge`)**로 전환해둠. 우분투가 이미 (다른 이유로) bridge를 쓰고 있던 것과 같은 방향.
+
+**웹 중계 서비스를 추가할 때 권장 방식**
+1. 이 프로젝트의 `docker-configs/windows/docker-compose.yml`에 웹 중계 서비스를 **컨테이너로 추가**하고, `ugv1`/`ugv2`처럼 같은 `x-ros-common`(bridge 네트워크)에 태우기. 이러면 ROS 2 topic 구독/발행(DDS)이 별도 설정 없이 됨.
+2. 브라우저(크롬)에서 접속해야 하는 포트(HTTP/WebSocket)는 그 서비스에 `ports:`로 명시적으로 publish. (예: mac 설정의 `6080:6080`과 동일한 방식)
+3. **네이티브 Windows 프로세스로 직접 ROS 2 노드를 돌리는 방식은 지금 구조로는 지원 안 됨.** 꼭 필요하다면 멀티캐스트 대신 Fast DDS Discovery Server(unicast) 같은 별도 설정이 추가로 필요하니 미리 공유 필요.
+
+## 9. 파이썬 파일을 추가 시 해야할 것
+패키지가 목적별로 나뉘어 있으니, 새 노드가 어디에 속하는지 먼저 결정.
 
 | 패키지 | 용도 |
 |---|---|
@@ -186,23 +244,23 @@ python3 scripts/webots2kitti.py
 | `webots_goal_bridge` | 외부(웹, Gemini)에서 들어오는 목표점 연동 |
 | `webots_data_collection` | 카메라-라이다 데이터 수집 및 변환 |
 
-새 파일을 넣을 패키지를 고른 뒤, 그 패키지의 `setup.py`에서 `entry_points`에 아래처럼 한 줄 추가하면 됩니다.
+새 파일을 넣을 패키지를 고른 뒤, 그 패키지의 `setup.py`에서 `entry_points`에 아래처럼 한 줄 추가하면 됨.
 ```python
     entry_points={
         'console_scripts': [
-            # 기존에 있던 노드들이 있다면 유지하고, 아래 줄을 추가하세요.
+            # 기존에 있던 노드들이 있다면 유지하고, 아래 줄 추가
             'my_new_node = <패키지_이름>.my_new_node:main',
         ],
     },
 ```
-완전히 새로운 목적(예: 새로운 센서 파이프라인)이라면, 기존 패키지 중 하나에 억지로 끼워넣기보다 `webots_data_collection`과 같은 구조로 새 ament_python 패키지를 하나 만드는 것을 추천합니다.
+완전히 새로운 목적(예: 새로운 센서 파이프라인)이라면, 기존 패키지 중 하나에 억지로 끼워넣기보다 `webots_data_collection`과 같은 구조로 새 ament_python 패키지를 하나 만드는 것을 추천.
 
 ## 향후 계획
 - Gemini api 연동
 - Spot 추가
 - Drone 추가
 - 지도 생성 및 로봇 생성 자동화
-- 윈도우 환경도 bridge 네트워크로 전환 테스트 (우분투에서 확인된 SHM 통신 문제가 윈도우에도 있는지 확인 필요)
+- ~~윈도우 환경도 bridge 네트워크로 전환 테스트~~ → 완료 ([8-2](#8-2-windows-네트워킹-참고사항-웹-개발자용) 참고)
 
 ## 참고 문서 (References)
 - Webots 공식 사용자 가이드 (User Guide)

@@ -1,10 +1,21 @@
 version: '3.8'
 
+# 🌉 [네트워크 모드: bridge] network_mode: host 대신 도커 기본 bridge 네트워크를 씁니다.
+# Docker Desktop for Windows는 host 모드를 줘도 실제 Windows 네트워크가 아니라
+# Docker Desktop 내부 VM 네트워크(예: 192.168.65.x)에 격리되어, Windows(크롬 등)에서
+# 컨테이너 포트로 접속이 아예 안 되는 문제가 있었습니다 (실측 확인).
+# bridge + 명시적 ports publish 조합은 Docker Desktop이 자동으로 localhost 포워딩을
+# 해주기 때문에 이 문제가 해결됩니다.
+networks:
+  ros_bridge:
+    driver: bridge
+
 x-ros-common: &ros-common
   build:
     context: ../..
     dockerfile: docker-configs/windows/Dockerfile
-  network_mode: "host"
+  networks:
+    - ros_bridge
   ipc: host
   pid: host
   # 🚨 [주의] volumes 마운트를 제거하거나 주석 처리하세요!
