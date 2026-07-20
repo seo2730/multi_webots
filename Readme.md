@@ -18,6 +18,13 @@
   - [8-1. 맵/목표점 데이터 규격 (웹 개발자용)](#8-1-맵목표점-데이터-규격-웹-개발자용)
   - [8-2. Windows 네트워킹 참고사항 (웹 개발자용)](#8-2-windows-네트워킹-참고사항-웹-개발자용)
 - [9. 파이썬 파일을 추가 시 해야할 것](#9-파이썬-파일을-추가-시-해야할-것)
+- [10. Spot (사족보행 로봇)](#10-spot-사족보행-로봇)
+  - [10-1. 사전 준비 (서브모듈 + 월드 설정)](#10-1-사전-준비-서브모듈--월드-설정)
+  - [10-2. 실행](#10-2-실행)
+  - [10-3. 센서 구성 (라이다 없음 → 뎁스카메라 5개 병합)](#10-3-센서-구성-라이다-없음--뎁스카메라-5개-병합)
+  - [10-4. cmd_vel 사용법 (UGV와 다름, 주의)](#10-4-cmd_vel-사용법-ugv와-다름-주의)
+  - [10-5. 자세 제어 서비스](#10-5-자세-제어-서비스)
+  - [10-6. 알려진 이슈 (진행 중)](#10-6-알려진-이슈-진행-중)
 - [향후 계획](#향후-계획)
 - [참고 문서 (References)](#참고-문서-references)
 
@@ -255,12 +262,70 @@ Windows 환경에서 Docker로 ROS 2를 돌리면서 실측으로 확인한 내�
 ```
 완전히 새로운 목적(예: 새로운 센서 파이프라인)이라면, 기존 패키지 중 하나에 억지로 끼워넣기보다 `webots_data_collection`과 같은 구조로 새 ament_python 패키지를 하나 만드는 것을 추천.
 
+## 10. Spot (사족보행 로봇)
+
+Boston Dynamics Spot을 [seo2730/webots_ros2_spot](https://github.com/seo2730/webots_ros2_spot) (MASKOR/webots_ros2_spot 포크)로 연동. UGV(SummitXL)와 별개 흐름이라 여기 따로 정리.
+
+### 10-1. 사전 준비 (서브모듈 + 월드 설정)
+- 서브모듈 2개 추가됨: `src/webots_ros2_spot`(포크, 다리 제어 코드), `src/webots_spot_msgs`(커스텀 메시지). [2. 설치 및 구성](#2-설치-및-구성-installation)의 `git submodule update --init --recursive`에 이미 포함되어 있어서 별도 조치 불필요.
+- `my_world.wbt`에 이미 아래처럼 세팅되어 있어야 함 (새 월드로 옮기거나 처음부터 구성할 때 참고):
+  ```
+  EXTERNPROTO "../../../../webots_ros2_spot/protos/Spot.proto"
+  ...
+  DEF Spot Spot {
+    translation -0.84 -0.34 0.624
+    rotation 0 0 1 0
+    name "spot1"
+    controller "<extern>"
+    supervisor TRUE
+  }
+  ```
+  - `EXTERNPROTO`는 **로컬 상대경로**여야 함. GitHub raw URL로 참조하면 `Spot.proto` 내부의 `EXTERNPROTO "SpotLeg.proto"`(상대경로)가 "공식 Webots 에셋 아니면 상대경로 추론 안 해줌" 정책에 걸려서 다리가 하나도 안 뜸.
+  - `supervisor TRUE` 필수 — `spot_driver.py`가 `getFromDef()` 같은 Supervisor 전용 API를 씀. 빠지면 `init()`이 조용히 실패하고 이상한 곳(`touch_fl` 등)에서 크래시남.
+  - 🚨 **Webots 씬트리에서 "Spot"을 Add Node로 다시 검색해서 추가하지 말 것.** Webots 기본 내장(스톡) proto가 잡혀서 위 설정이 통째로 날아감. 텍스트 에디터로 `.wbt` 파일을 직접 고치고 `Ctrl+Shift+R`로 리로드하는 방식으로만 수정.
+
+### 10-2. 실행
+`docker-compose.yml`에 `spot1` 서비스가 이미 추가되어 있어서, [6. 실행 명령어](#6-실행-명령어-docker-compose)의 `up --build -d`로 다른 로봇들과 같이 뜸. Spot만 따로 올리거나 재시작하려면:
+```bash
+docker compose -f docker-configs/windows/docker-compose.yml up --build -d spot1
+docker logs -f spot1_brain_windows
+```
+런치 파일은 `ros2 launch webots_spot single_spot_launch.py` (namespace는 `ROBOT_ID` 환경변수, 기본값 `spot1`).
+
+### 10-3. 센서 구성 (라이다 없음 → 뎁스카메라 5개 병합)
+Spot에는 UGV의 Velodyne 같은 2D 라이다가 없고, 뎁스카메라 5개(`left_flank_depth`, `right_flank_depth`, `left_head_depth`, `right_head_depth`, `rear_depth`)만 있음. 그래서:
+1. `depthimage_to_laserscan` 노드 5개가 각 뎁스카메라를 개별 `LaserScan`으로 변환
+2. `webots_spot` 패키지의 커스텀 노드 `multi_scan_merger`([multi_scan_merger.py](src/webots_ros2_spot/webots_spot/multi_scan_merger.py))가 tf2로 5개를 `{ns}/base_link` 기준 하나의 360도 스캔으로 합쳐서 `/spot1/scan`으로 발행
+3. SLAM Toolbox/Nav2는 이 `/spot1/scan`을 UGV와 완전히 동일한 방식(`navigation` 패키지의 `nav2.launch.py` 그대로 재사용)으로 사용
+
+### 10-4. cmd_vel 사용법 (UGV와 다름, 주의)
+Spot의 `/spot1/cmd_vel`은 UGV처럼 진짜 속도(m/s)가 아니라, Bezier 보행의 **걸음 크기(StepLength) 배율**로 쓰임 (`linear.x * 0.15`). UGV 감각으로 `linear.x: 1.0` 이상을 주면 보폭이 너무 커져서 넘어짐 — 그래서 `spot_driver.py`에 `MAX_STEP_LENGTH(0.05)`/`MAX_YAW_RATE(0.5)` 상한 클램프를 걸어둠. 그래도 **권장 입력 범위는 `linear.x`/`angular.z` 둘 다 -0.5~0.5 정도**.
+```bash
+ros2 topic pub /spot1/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.3, y: 0.0, z: 0.0}, angular: {z: 0.0}}" -r 10
+```
+
+### 10-5. 자세 제어 서비스
+| 서비스 | 타입 | 기능 |
+|---|---|---|
+| `/spot1/stand_up` | `webots_spot_msgs/srv/SpotMotion` | 일어서기 |
+| `/spot1/sit_down` | `webots_spot_msgs/srv/SpotMotion` | 앉기 |
+| `/spot1/lie_down` | `webots_spot_msgs/srv/SpotMotion` | 눕기 |
+| `/spot1/shake_hand` | `webots_spot_msgs/srv/SpotMotion` | 악수(재롱) |
+| `/spot1/set_height` | `webots_spot_msgs/srv/SpotHeight` | 몸높이 조절 |
+| `/spot1/float_mode` | `std_srvs/srv/SetBool` | 제자리 호버링 (거리 센서 필요 — 10-6 참고) |
+
+예: `ros2 service call /spot1/stand_up webots_spot_msgs/srv/SpotMotion "{override: true}"`
+
+### 10-6. 알려진 이슈 (진행 중)
+- **`spot1/odom`, `spot1/map` 관련 TF가 안 올라옴.** `/spot1/scan`은 정상 발행되고 `spot_driver`도 크래시 없이 조용히 돌아가는데, `spot_driver.py`가 쏴야 할 `odom → base_link` TF가 5초 이상 지켜봐도 `/tf`에 안 뜸. 원인 조사 중 (Webots 시뮬레이션이 Play 상태가 아니었을 가능성부터 확인 필요). 이 때문에 SLAM 맵 생성이 아직 안 됨.
+- **`float_mode` 서비스가 항상 비활성화됨.** 지금 쓰는 `Spot.proto`엔 `front_left_dist` 같은 거리 센서가 없어서(`spot_driver.py`가 방어적으로 감지해서 꺼둠), 이 기능을 쓰려면 proto에 센서를 직접 추가해야 함.
+
 ## 향후 계획
 - Gemini api 연동
-- Spot 추가
 - Drone 추가
 - 지도 생성 및 로봇 생성 자동화
 - ~~윈도우 환경도 bridge 네트워크로 전환 테스트~~ → 완료 ([8-2](#8-2-windows-네트워킹-참고사항-웹-개발자용) 참고)
+- ~~Spot 추가~~ → 다리 제어까지 완료, TF/SLAM 이슈는 진행 중 ([10-6](#10-6-알려진-이슈-진행-중) 참고)
 
 ## 참고 문서 (References)
 - Webots 공식 사용자 가이드 (User Guide)

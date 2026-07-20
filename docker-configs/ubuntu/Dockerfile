@@ -27,6 +27,17 @@ RUN apt-get update && apt-get install -y \
     python3-colcon-common-extensions \
     && rm -rf /var/lib/apt/lists/*
 
+# 3-1. webots_ros2_spot (Spot 사족보행 로봇) 의존성 - MoveIt 계열 + xacro/controller_manager
+RUN apt-get update && apt-get install -y \
+    ros-humble-moveit ros-humble-moveit-ros-move-group ros-humble-moveit-kinematics \
+    ros-humble-moveit-planners ros-humble-moveit-simple-controller-manager \
+    ros-humble-moveit-configs-utils ros-humble-moveit-ros-visualization ros-humble-moveit-ros-warehouse \
+    ros-humble-moveit-setup-assistant \
+    ros-humble-joint-state-publisher ros-humble-joint-state-publisher-gui \
+    ros-humble-controller-manager ros-humble-joint-state-broadcaster ros-humble-xacro \
+    ros-humble-depthimage-to-laserscan ros-humble-laser-geometry ros-humble-tf2-sensor-msgs \
+    && rm -rf /var/lib/apt/lists/*
+
 # 4. Webots 2025a 설치
 RUN wget -q https://github.com/cyberbotics/webots/releases/download/R2025a/webots_2025a_amd64.deb && \
     apt-get update && apt-get install -y ./webots_2025a_amd64.deb && \

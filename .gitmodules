@@ -1,3 +1,9 @@
 [submodule "src/Webots-SummitXL"]
 	path = src/Webots-SummitXL
 	url = https://github.com/seo2730/Webots-SummitXL
+[submodule "src/webots_ros2_spot"]
+	path = src/webots_ros2_spot
+	url = https://github.com/seo2730/webots_ros2_spot
+[submodule "src/webots_spot_msgs"]
+	path = src/webots_spot_msgs
+	url = https://github.com/seo2730/webots_spot_msgs

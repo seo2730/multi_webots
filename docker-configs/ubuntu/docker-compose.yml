@@ -86,3 +86,19 @@ services:
                ros2 launch webots_python single_ugv.launch.py"
     depends_on:
       - master
+
+  # 4. Spot 독립 컨테이너
+  spot1:
+    <<: *ros-common
+    container_name: spot1_brain_ubuntu
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - ROS_LOCALHOST_ONLY=0
+      - ROS_DOMAIN_ID=30
+      - ROBOT_ID=spot1
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 launch webots_spot single_spot_launch.py"
+    depends_on:
+      - master
