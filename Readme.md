@@ -24,7 +24,7 @@
   - [10-3. 센서 구성 (라이다 없음 → 뎁스카메라 5개 병합)](#10-3-센서-구성-라이다-없음--뎁스카메라-5개-병합)
   - [10-4. cmd_vel 사용법 (UGV와 다름, 주의)](#10-4-cmd_vel-사용법-ugv와-다름-주의)
   - [10-5. 자세 제어 서비스](#10-5-자세-제어-서비스)
-  - [10-6. 알려진 이슈 (진행 중)](#10-6-알려진-이슈-진행-중)
+  - [10-6. 해결된 이슈 (트러블슈팅 기록)](#10-6-해결된-이슈-트러블슈팅-기록)
 - [향후 계획](#향후-계획)
 - [참고 문서 (References)](#참고-문서-references)
 
@@ -278,8 +278,35 @@ Boston Dynamics Spot을 [seo2730/webots_ros2_spot](https://github.com/seo2730/we
     name "spot1"
     controller "<extern>"
     supervisor TRUE
+    middleExtension [
+      DistanceSensor {
+        translation -0.05 -0.21 -0.3
+        rotation -0.7071 0.7071 0 3.14159
+        name "front_left_dist"
+        lookupTable [ 0 0 0, 1000 1000 0 ]
+      }
+      DistanceSensor {
+        translation 0.05 -0.21 -0.3
+        rotation -0.7071 0.7071 0 3.14159
+        name "front_right_dist"
+        lookupTable [ 0 0 0, 1000 1000 0 ]
+      }
+      DistanceSensor {
+        translation -0.05 -0.21 0.3
+        rotation 0 0 1 -1.57079
+        name "rear_left_dist"
+        lookupTable [ 0 0 0, 1000 1000 0 ]
+      }
+      DistanceSensor {
+        translation 0.05 -0.21 0.3
+        rotation 0 0 1 -1.57079
+        name "rear_right_dist"
+        lookupTable [ 0 0 0, 1000 1000 0 ]
+      }
+    ]
   }
   ```
+  - **`middleExtension`이 뭔가?** `Spot.proto`가 노출하는 확장 슬롯(`frontExtension`/`middleExtension`/`rearExtension`) 중 하나로, proto 파일을 수정하지 않고 월드에서 로봇 몸통(등 중앙부)에 장치를 추가 장착하는 통로. 위의 하향 거리센서 4개는 `float_mode`(제자리 호버링)가 바닥까지의 거리를 재는 데 필요한데, 포크 `Spot.proto`엔 이 센서가 없어서 MASKOR 원본 월드와 동일한 방식·배치로 여기에 꽂아줌. 센서가 없으면 드라이버가 자동 감지해서 `float_mode`만 비활성화되고 나머지(걷기/SLAM)는 정상 동작함.
   - `EXTERNPROTO`는 **로컬 상대경로**여야 함. GitHub raw URL로 참조하면 `Spot.proto` 내부의 `EXTERNPROTO "SpotLeg.proto"`(상대경로)가 "공식 Webots 에셋 아니면 상대경로 추론 안 해줌" 정책에 걸려서 다리가 하나도 안 뜸.
   - `supervisor TRUE` 필수 — `spot_driver.py`가 `getFromDef()` 같은 Supervisor 전용 API를 씀. 빠지면 `init()`이 조용히 실패하고 이상한 곳(`touch_fl` 등)에서 크래시남.
   - 🚨 **Webots 씬트리에서 "Spot"을 Add Node로 다시 검색해서 추가하지 말 것.** Webots 기본 내장(스톡) proto가 잡혀서 위 설정이 통째로 날아감. 텍스트 에디터로 `.wbt` 파일을 직접 고치고 `Ctrl+Shift+R`로 리로드하는 방식으로만 수정.
@@ -312,20 +339,21 @@ ros2 topic pub /spot1/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.3, y: 0.0,
 | `/spot1/lie_down` | `webots_spot_msgs/srv/SpotMotion` | 눕기 |
 | `/spot1/shake_hand` | `webots_spot_msgs/srv/SpotMotion` | 악수(재롱) |
 | `/spot1/set_height` | `webots_spot_msgs/srv/SpotHeight` | 몸높이 조절 |
-| `/spot1/float_mode` | `std_srvs/srv/SetBool` | 제자리 호버링 (거리 센서 필요 — 10-6 참고) |
+| `/spot1/float_mode` | `std_srvs/srv/SetBool` | 제자리 호버링 (월드의 `middleExtension` 거리센서 4개 사용) |
 
 예: `ros2 service call /spot1/stand_up webots_spot_msgs/srv/SpotMotion "{override: true}"`
 
-### 10-6. 알려진 이슈 (진행 중)
-- **`spot1/odom`, `spot1/map` 관련 TF가 안 올라옴.** `/spot1/scan`은 정상 발행되고 `spot_driver`도 크래시 없이 조용히 돌아가는데, `spot_driver.py`가 쏴야 할 `odom → base_link` TF가 5초 이상 지켜봐도 `/tf`에 안 뜸. 원인 조사 중 (Webots 시뮬레이션이 Play 상태가 아니었을 가능성부터 확인 필요). 이 때문에 SLAM 맵 생성이 아직 안 됨.
-- **`float_mode` 서비스가 항상 비활성화됨.** 지금 쓰는 `Spot.proto`엔 `front_left_dist` 같은 거리 센서가 없어서(`spot_driver.py`가 방어적으로 감지해서 꺼둠), 이 기능을 쓰려면 proto에 센서를 직접 추가해야 함.
+### 10-6. 해결된 이슈 (트러블슈팅 기록)
+- ~~**`spot1/odom` TF가 안 올라옴**~~ → **해결.** 원인은 Webots 시뮬레이션이 Play 상태가 아니었던 것. 일시정지 상태면 `step()`이 호출되지 않아 TF/odom이 전혀 발행되지 않음. **시뮬레이션 Play(▶) 상태 확인이 항상 1순위 점검 항목.**
+- ~~**`spot1/map`이 안 나옴 (SLAM 맵 생성 실패)**~~ → **해결.** `multi_scan_merger`와 `depthimage_to_laserscan` 노드에 `use_sim_time: True`가 빠져 있어서, 병합 스캔이 벽시계 시간으로 스탬프됨 → 시뮬레이션 시간 기반 TF와 영원히 매칭 안 됨 → slam_toolbox가 "Message Filter dropping message ... queue is full"을 찍으며 스캔을 전부 버림. launch 파일에 `use_sim_time` 추가로 해결 (`/spot1/map` 발행 실측 확인). **새 센서 처리 노드를 추가할 땐 `use_sim_time: True`를 잊지 말 것.**
+- ~~**`float_mode` 서비스가 항상 비활성화됨**~~ → **해결.** MASKOR 원본은 거리 센서 4개(`front_left_dist` 등)를 proto가 아니라 자기 월드 파일에서 Spot의 `middleExtension` 슬롯에 꽂아주고 있었음. 같은 배치를 `my_world.wbt`의 Spot 인스턴스에 추가해서 해결 (드라이버가 자동 감지).
 
 ## 향후 계획
 - Gemini api 연동
 - Drone 추가
 - 지도 생성 및 로봇 생성 자동화
 - ~~윈도우 환경도 bridge 네트워크로 전환 테스트~~ → 완료 ([8-2](#8-2-windows-네트워킹-참고사항-웹-개발자용) 참고)
-- ~~Spot 추가~~ → 다리 제어까지 완료, TF/SLAM 이슈는 진행 중 ([10-6](#10-6-알려진-이슈-진행-중) 참고)
+- ~~Spot 추가~~ → 완료 (다리 제어 + 뎁스카메라 SLAM 맵 생성까지 확인, [10-6](#10-6-해결된-이슈-트러블슈팅-기록) 참고)
 
 ## 참고 문서 (References)
 - Webots 공식 사용자 가이드 (User Guide)
