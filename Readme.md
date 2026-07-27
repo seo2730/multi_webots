@@ -25,6 +25,7 @@
   - [10-4. cmd_vel 사용법 (UGV와 다름, 주의)](#10-4-cmd_vel-사용법-ugv와-다름-주의)
   - [10-5. 자세 제어 서비스](#10-5-자세-제어-서비스)
   - [10-6. 해결된 이슈 (트러블슈팅 기록)](#10-6-해결된-이슈-트러블슈팅-기록)
+  - [10-7. UGV와 다른 점 / Spot에서 고려해야 할 사항](#10-7-ugv와-다른-점--spot에서-고려해야-할-사항)
 - [향후 계획](#향후-계획)
 - [참고 문서 (References)](#참고-문서-references)
 
@@ -319,9 +320,12 @@ docker logs -f spot1_brain_windows
 ```
 런치 파일은 `ros2 launch webots_spot single_spot_launch.py` (namespace는 `ROBOT_ID` 환경변수, 기본값 `spot1`).
 
+> 💡 `spot_driver.py`에 사족보행 관련 함수가 많아서 별도 문서로 정리해둠 → **[spot_driver.py 함수 설명서](spot_driver_functions.md)** (동작 모드 3종, 보행/자세/호버링/상태발행 함수별 역할)
+
 ### 10-3. 센서 구성 (라이다 없음 → 뎁스카메라 5개 병합)
 Spot에는 UGV의 Velodyne 같은 2D 라이다가 없고, 뎁스카메라 5개(`left_flank_depth`, `right_flank_depth`, `left_head_depth`, `right_head_depth`, `rear_depth`)만 있음. 그래서:
-1. `depthimage_to_laserscan` 노드 5개가 각 뎁스카메라를 개별 `LaserScan`으로 변환
+1. `pointcloud_to_laserscan` 노드 5개가 각 뎁스카메라의 3D 포인트클라우드를 `{ns}/base_link` 기준으로 변환 후 **z 높이 필터**(`min_height: -0.35` = 지면 위 ~0.17m부터만 장애물 인정)를 거쳐 개별 `LaserScan`으로 변환
+   - 🚨 `depthimage_to_laserscan`을 쓰면 안 됨 — 카메라 수평 가정이라, 아래로 기울어진 Spot 카메라가 바닥을 장애물로 읽어 로봇 주변에 가짜 원형 벽이 생김 (10-6 참고)
 2. `webots_spot` 패키지의 커스텀 노드 `multi_scan_merger`([multi_scan_merger.py](src/webots_ros2_spot/webots_spot/multi_scan_merger.py))가 tf2로 5개를 `{ns}/base_link` 기준 하나의 360도 스캔으로 합쳐서 `/spot1/scan`으로 발행
 3. SLAM Toolbox/Nav2는 이 `/spot1/scan`을 UGV와 완전히 동일한 방식(`navigation` 패키지의 `nav2.launch.py` 그대로 재사용)으로 사용
 
@@ -347,6 +351,29 @@ ros2 topic pub /spot1/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.3, y: 0.0,
 - ~~**`spot1/odom` TF가 안 올라옴**~~ → **해결.** 원인은 Webots 시뮬레이션이 Play 상태가 아니었던 것. 일시정지 상태면 `step()`이 호출되지 않아 TF/odom이 전혀 발행되지 않음. **시뮬레이션 Play(▶) 상태 확인이 항상 1순위 점검 항목.**
 - ~~**`spot1/map`이 안 나옴 (SLAM 맵 생성 실패)**~~ → **해결.** `multi_scan_merger`와 `depthimage_to_laserscan` 노드에 `use_sim_time: True`가 빠져 있어서, 병합 스캔이 벽시계 시간으로 스탬프됨 → 시뮬레이션 시간 기반 TF와 영원히 매칭 안 됨 → slam_toolbox가 "Message Filter dropping message ... queue is full"을 찍으며 스캔을 전부 버림. launch 파일에 `use_sim_time` 추가로 해결 (`/spot1/map` 발행 실측 확인). **새 센서 처리 노드를 추가할 땐 `use_sim_time: True`를 잊지 말 것.**
 - ~~**`float_mode` 서비스가 항상 비활성화됨**~~ → **해결.** MASKOR 원본은 거리 센서 4개(`front_left_dist` 등)를 proto가 아니라 자기 월드 파일에서 Spot의 `middleExtension` 슬롯에 꽂아주고 있었음. 같은 배치를 `my_world.wbt`의 Spot 인스턴스에 추가해서 해결 (드라이버가 자동 감지).
+- ~~**맵이 로봇 주변 반경 1.5m 감옥처럼 나옴**~~ → **해결.** `depthimage_to_laserscan`이 아래로 기울어진 뎁스카메라의 "1~2m 앞 바닥"을 장애물로 읽은 것. `pointcloud_to_laserscan` + z 높이 필터로 교체해서 해결 (10-3 참고).
+- ~~**주행할수록 위치가 틀어지고 빈 공간에 유령 장애물이 생김**~~ → **해결.** MASKOR 원본 `spot_driver.py`의 odom 계산에 "로봇이 180도 돌아서 스폰"을 전제한 마이너스 부호가 하드코딩되어 있었음. 우리 월드(정방향 스폰)에서는 odom이 이동 방향과 반대로 나와, SLAM이 매 스캔 잘못된 사전 추정에서 출발 → 맵 오염 + 이동량 비례 드리프트. **판별법**: Spot의 odom은 supervisor 정답 좌표 기반이라 원리상 드리프트 0이어야 하므로, `map→odom` 보정량(tf2_echo)이 수십 cm 이상이면 무조건 좌표 변환 버그.
+- ~~**맵이 실제 세계와 180도 뒤집혀 그려짐**~~ → **해결.** 위 버그를 "접속 시점 자세 기준 상대좌표"로 고쳤더니, 드라이버가 재접속하던 순간 로봇이 이전 주행 자리에서 ~185도 돌아서 있어서 그 방향이 맵의 기준축이 되어버림 (IMU 정답 yaw와 odom yaw를 대조해 184.8° 차이로 확정). 최종적으로 **UGV `robot_driver.py`와 동일하게 월드 절대좌표를 odom으로 그대로 발행**하도록 변경 → 시작 자세·재시작 순서와 무관하게 맵이 항상 월드와 정렬됨.
+- ~~**Nav2 리커버리(spin/backup)가 전부 Abort됨**~~ → **해결.** `nav2.yaml`의 behavior_server에 `local_frame`/`robot_base_frame` 키가 없어서 네임스페이스 없는 기본값(`odom`/`base_link`)을 찾다 실패한 것. 키 추가 + `nav2.launch.py` 재작성 규칙에 `local_frame` 포함으로 해결. **UGV에도 잠재해 있던 버그라 UGV 리커버리도 함께 고쳐짐.**
+
+### 10-7. UGV와 다른 점 / Spot에서 고려해야 할 사항
+
+| 항목 | UGV (SummitXL) | Spot |
+|---|---|---|
+| 이동 방식 | 바퀴 (메카넘) | 다리 (Bezier 보행) |
+| `cmd_vel` 의미 | 진짜 속도(m/s) | **걸음 크기 배율** (10-4 참고, ±0.5 권장) |
+| 넘어짐 | 불가능 | **가능** — 큰 cmd_vel, 충돌, 급회전에 넘어질 수 있음 |
+| 주 센서 | Velodyne 라이다 (360도, ~50m) | 뎁스카메라 5개 합성 (10m, 카메라 사이 사각지대 있음) |
+| odom 출처 | GPS+IMU 장치값 (월드 절대좌표) | supervisor 정답값 (월드 절대좌표, 동일 컨벤션으로 통일함) |
+
+**운용할 때 주의할 것들:**
+1. **넘어지면 복구가 안 됨** — 넘어진 뒤에는 stand_up으로도 못 일어나는 경우가 많고, odom은 정답값이라 넘어진 자세를 그대로 반영해 SLAM/Nav2가 이상해짐. 넘어지면 Webots 월드 리로드(`Ctrl+Shift+R`) + `docker compose restart spot1`이 가장 빠른 복구.
+2. **Nav2 속도 튜닝 여지** — Nav2는 cmd_vel을 진짜 속도로 알고 보내는데 Spot은 걸음 배율로 해석 + 상한 클램프 때문에 Nav2 기대보다 느리게 이동함. 경로 추종이 답답하거나 리커버리가 자주 돌면 `nav2.yaml`의 속도/가속 상한을 Spot용으로 낮추는 튜닝 필요 (현재는 UGV와 같은 파라미터 공유).
+3. **footprint 미조정** — `nav2.yaml`의 로봇 footprint가 UGV 기준(0.7×0.5m)임. Spot은 다리 벌림 폭이 달라서 좁은 통로 통과/충돌 여유 판단이 부정확할 수 있음.
+4. **뎁스카메라 사각지대** — 카메라 5개가 대부분 방향을 커버하지만 카메라 FOV 사이 틈이 있어, 정확히 사각에 있는 얇은 장애물은 스캔에 안 잡힐 수 있음.
+5. **새 센서 노드 추가 시 `use_sim_time: True` 필수** — 빠뜨리면 벽시계 스탬프 때문에 SLAM이 데이터를 전부 버림 (10-6의 사례).
+6. **Spot 여러 대는 아직 미지원** — 월드의 `DEF Spot` 이름과 드라이버의 `robot_def` 기본값이 1대 기준. 2대 이상은 DEF 이름 분리 + xacro `robot_def` 인자 전달 작업이 필요.
+7. **실제 로봇 이식 시** — 지금 odom은 시뮬레이션 정답값이라 드리프트가 0임. 실기에서는 센서 기반 추정 odom(드리프트 있음)으로 바뀌므로 SLAM 파라미터(보정 강도 등)를 다시 튜닝해야 함.
 
 ## 향후 계획
 - Gemini api 연동
