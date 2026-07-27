@@ -309,6 +309,7 @@ Boston Dynamics Spot을 [seo2730/webots_ros2_spot](https://github.com/seo2730/we
   ```
   - **`middleExtension`이 뭔가?** `Spot.proto`가 노출하는 확장 슬롯(`frontExtension`/`middleExtension`/`rearExtension`) 중 하나로, proto 파일을 수정하지 않고 월드에서 로봇 몸통(등 중앙부)에 장치를 추가 장착하는 통로. 위의 하향 거리센서 4개는 `float_mode`(제자리 호버링)가 바닥까지의 거리를 재는 데 필요한데, 포크 `Spot.proto`엔 이 센서가 없어서 MASKOR 원본 월드와 동일한 방식·배치로 여기에 꽂아줌. 센서가 없으면 드라이버가 자동 감지해서 `float_mode`만 비활성화되고 나머지(걷기/SLAM)는 정상 동작함.
   - `EXTERNPROTO`는 **로컬 상대경로**여야 함. GitHub raw URL로 참조하면 `Spot.proto` 내부의 `EXTERNPROTO "SpotLeg.proto"`(상대경로)가 "공식 Webots 에셋 아니면 상대경로 추론 안 해줌" 정책에 걸려서 다리가 하나도 안 뜸.
+  - 🚨 **커밋 전 이 줄을 항상 확인할 것.** Webots에서 월드를 저장(`Ctrl+S`)할 때마다 이 줄이 `D:/Document/...` 같은 **절대경로로 자동 변경됨**. 그대로 커밋하면 다른 컴퓨터에서 월드가 안 열림. 원인은 Webots가 "월드의 프로젝트 폴더(`simulator/`) 바깥"에 있는 proto만 절대경로로 정규화하기 때문 (`simulator/protos/` 안에 있는 `VelodyneVLP-16.proto` 등은 상대경로가 유지됨). Webots 옵션으로 끌 수 없으니 `git diff`에서 `D:/`가 보이면 위의 상대경로로 되돌리고 커밋.
   - `supervisor TRUE` 필수 — `spot_driver.py`가 `getFromDef()` 같은 Supervisor 전용 API를 씀. 빠지면 `init()`이 조용히 실패하고 이상한 곳(`touch_fl` 등)에서 크래시남.
   - 🚨 **Webots 씬트리에서 "Spot"을 Add Node로 다시 검색해서 추가하지 말 것.** Webots 기본 내장(스톡) proto가 잡혀서 위 설정이 통째로 날아감. 텍스트 에디터로 `.wbt` 파일을 직접 고치고 `Ctrl+Shift+R`로 리로드하는 방식으로만 수정.
 
