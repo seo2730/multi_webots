@@ -1,0 +1,79 @@
+<?xml version="1.0"?>
+<!-- Mavic2ProMedium (중형급 쿼드콥터) URDF.
+     SummitXlSteel.urdf.xacro와 같은 방식으로 webots_ros2_driver에 플러그인을 물린다.
+     기체 실물 형상은 Webots PROTO가 그리므로 여기서는 TF 뼈대만 정의한다. -->
+<robot name="drone" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:arg name="namespace" default=""/>
+
+  <!-- 동체: 대각선 약 0.7 m (순정 Mavic의 2배) -->
+  <link name="base_link">
+    <visual>
+      <origin xyz="-0.06 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.42 0.17 0.054"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.06 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.42 0.17 0.054"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- 짐벌 카메라: 동체 앞쪽 아래 -->
+  <link name="camera"/>
+  <joint name="base_link_camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera"/>
+    <origin xyz="0.09 0 -0.05" rpy="0 0 0"/>
+  </joint>
+
+  <link name="gps"/>
+  <joint name="base_link_gps_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="gps"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="inertial_unit"/>
+  <joint name="base_link_inertial_unit_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="inertial_unit"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="gyro"/>
+  <joint name="base_link_gyro_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="gyro"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="compass"/>
+  <joint name="base_link_compass_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="compass"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <webots>
+    <plugin type="simulator.drone_driver.main">
+      <namespace>$(arg namespace)</namespace>
+    </plugin>
+
+    <device reference="camera" type="Camera">
+      <ros>
+        <topicName>/$(arg namespace)/camera</topicName>
+        <frameName>$(arg namespace)/camera</frameName>
+        <enabled>true</enabled>
+      </ros>
+    </device>
+
+    <device reference="gps" type="GPS">
+      <ros>
+        <frameName>$(arg namespace)/gps</frameName>
+      </ros>
+    </device>
+  </webots>
+</robot>

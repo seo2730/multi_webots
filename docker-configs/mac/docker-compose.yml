@@ -73,3 +73,16 @@ services:
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
                ros2 launch webots_spot single_spot_launch.py"
+
+  # 5. 드론 독립 컨테이너
+  drone1:
+    <<: *mac-common
+    container_name: drone1_brain_mac
+    environment:
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - ROS_LOCALHOST_ONLY=0
+      - ROS_DOMAIN_ID=30
+      - ROBOT_ID=drone1
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 launch webots_python single_drone.launch.py"

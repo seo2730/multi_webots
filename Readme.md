@@ -26,6 +26,12 @@
   - [10-5. 자세 제어 서비스](#10-5-자세-제어-서비스)
   - [10-6. 해결된 이슈 (트러블슈팅 기록)](#10-6-해결된-이슈-트러블슈팅-기록)
   - [10-7. UGV와 다른 점 / Spot에서 고려해야 할 사항](#10-7-ugv와-다른-점--spot에서-고려해야-할-사항)
+- [11. Drone (중형급 쿼드콥터)](#11-drone-중형급-쿼드콥터)
+  - [11-1. 실행](#11-1-실행)
+  - [11-2. cmd_vel 사용법 (UGV와 다름, 주의)](#11-2-cmd_vel-사용법-ugv와-다름-주의)
+  - [11-3. 기체 구성 (Mavic 2 Pro 개조)](#11-3-기체-구성-mavic-2-pro-개조)
+  - [11-4. 해결된 이슈 (트러블슈팅 기록)](#11-4-해결된-이슈-트러블슈팅-기록)
+  - [11-5. 알려진 한계 / 다음 작업](#11-5-알려진-한계--다음-작업)
 - [향후 계획](#향후-계획)
 - [참고 문서 (References)](#참고-문서-references)
 
@@ -376,9 +382,111 @@ ros2 topic pub /spot1/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.3, y: 0.0,
 6. **Spot 여러 대는 아직 미지원** — 월드의 `DEF Spot` 이름과 드라이버의 `robot_def` 기본값이 1대 기준. 2대 이상은 DEF 이름 분리 + xacro `robot_def` 인자 전달 작업이 필요.
 7. **실제 로봇 이식 시** — 지금 odom은 시뮬레이션 정답값이라 드리프트가 0임. 실기에서는 센서 기반 추정 odom(드리프트 있음)으로 바뀌므로 SLAM 파라미터(보정 강도 등)를 다시 튜닝해야 함.
 
+## 11. Drone (중형급 쿼드콥터)
+
+DJI Mavic 2 Pro를 중형급(6.35kg)으로 개조한 `Mavic2ProMedium`. UGV·Spot과 동일하게 **`<extern>` 컨트롤러 + ROS 2 드라이버** 구조로 동작한다.
+
+### 11-1. 실행
+
+다른 로봇과 동일하다. 월드에서 `controller "<extern>"`이므로 컨테이너를 띄워야 드론이 움직인다 (안 띄우면 Webots가 컨트롤러를 기다리며 멈춘다).
+
+```bash
+# 코드가 바뀌었으면 먼저 빌드 (Dockerfile이 COPY로 코드를 넣기 때문)
+docker compose -f docker-configs/windows/docker-compose.yml build
+docker compose -f docker-configs/windows/docker-compose.yml up drone1
+```
+
+띄워지는 것: `robot_state_publisher` + `webots_ros2_driver`([drone_driver.py](src/Webots-SummitXL/workspace/simulator/simulator/drone_driver.py) 플러그인).
+
+| 토픽 | 방향 | 내용 |
+|---|---|---|
+| `/drone1/cmd_vel` | 입력 | 속도 명령 (아래 11-2) |
+| `/drone1/odom` | 출력 | 위치·자세·속도 (GPS + IMU) |
+| `/tf` | 출력 | `drone1/odom → drone1/base_link` |
+| `/drone1/camera/image_color` | 출력 | 짐벌 카메라 영상 |
+
+> SLAM/Nav2는 아직 붙이지 않았다. 드론에 거리 측정 센서가 없어서다 (단계 3에서 추가 예정).
+
+### 11-2. cmd_vel 사용법 (UGV와 다름, 주의)
+
+드론은 모터 4개로 6자유도를 다루는 **underactuated** 시스템이라, UGV처럼 Twist를 바퀴 속도로 바로 변환할 수 없다. 드라이버가 2단으로 처리한다.
+
+```
+cmd_vel ──▶ [속도 외부 루프] ──▶ 자세 목표 ──▶ [자세/고도 내부 루프] ──▶ 모터 4개
+```
+
+| 필드 | 의미 | 비고 |
+|---|---|---|
+| `linear.x` | 전후 속도 (m/s) | 기체 기준 |
+| `linear.y` | 좌우 속도 (m/s) | 기체 기준. **UGV(메카넘)와 달리 기체가 기울어서 이동** |
+| `linear.z` | **상승 속도** (m/s) | 목표 고도를 적분해서 바꾼다 (위치 아님) |
+| `angular.z` | 선회 각속도 (rad/s) | |
+
+```bash
+# 전진 1 m/s
+ros2 topic pub /drone1/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 1.0}}"
+# 상승 (0.5 m/s로 목표 고도 상승)
+ros2 topic pub /drone1/cmd_vel geometry_msgs/msg/Twist "{linear: {z: 0.5}}"
+# 정지 -> 제자리 유지 (속도 0을 능동 추종)
+ros2 topic pub /drone1/cmd_vel geometry_msgs/msg/Twist "{}"
+```
+
+**키보드 조종**: UGV의 `simulator keyboard`에 대응하는 드론용 텔레옵이 있다. 고도(`R`/`F`) 축이 추가됐고, 좌우가 조향이 아니라 평행이동인 점이 UGV와 다르다.
+
+```bash
+docker exec -it drone1_brain_windows bash -c \
+  "source /ros2_ws/install/setup.bash && \
+   ros2 run simulator drone_teleop --ros-args -r __ns:=/drone1"
+```
+
+```
+        W : 전진              Q / E : 좌 / 우 선회
+   A         D : 좌 / 우 평행이동   R / F : 상승 / 하강
+        S : 후진              Space : 정지(호버)   = / - : 속도 증감
+```
+
+**Nav2 호환**: Nav2는 `linear.x` / `angular.z`만 쓰므로 고도 고정 상태로 그대로 붙일 수 있다. `linear.y`·`linear.z`는 안 쓰면 0이 들어올 뿐이라 무해하다.
+
+실측 추종 성능 (Webots 헤드리스, 30초):
+
+| 명령 | 실제 | 오차 |
+|---|---|---|
+| 정지 (0 m/s) | 0.009 m/s 드리프트 | — |
+| 전진 1.0 m/s | 1.01 m/s | 1% |
+| 선회 0.5 rad/s | 0.50 rad/s | ~1% |
+| 목표 고도 2.0 m | 1.98 m, 오버슈트 없음 | 1% |
+
+### 11-3. 기체 구성 (Mavic 2 Pro 개조)
+
+순정 `Mavic2Pro.proto` 기준으로 **크기 ×2, 질량·추력/토크 상수 ×7** (0.907kg → 6.35kg). 질량과 추력을 같은 비율로 키웠기 때문에 추력 대 중량비가 보존되고, 순정 제어 법칙이 그대로 유효하다.
+
+- PROTO: `workspace/simulator/protos/Mavic2ProMedium.proto`
+- 메시·텍스처: `workspace/simulator/protos/Mavic2Pro/` (아래 11-4 참고)
+- 월드 배치: `DEF DRONE1 Mavic2ProMedium { translation -6.5 5.5 0.13, name "drone1" }`
+
+내장 센서는 **GPS, InertialUnit, Gyro, Compass, 짐벌 카메라**(3축, `cameraSlot`). 거리 측정 센서는 없음. 추가하려면 `bodySlot`(동체 고정) 또는 `cameraSlot`(짐벌 장착)을 쓴다 — SummitXL에 Velodyne 다는 방식과 동일.
+
+### 11-4. 해결된 이슈 (트러블슈팅 기록)
+
+1. **드론이 투명하게 보임** — Webots R2025a는 메시·텍스처 에셋을 설치본에 포함하지 않는다(`projects/robots/dji/mavic/` 폴더 자체가 없음). `webots://` 경로 참조가 조용히 실패해 셰이프가 하나도 안 그려졌다. 물리는 정상 동작해서 "안 보이는데 날아다니는" 상태가 됐다. → 메시 14개 + 텍스처를 `protos/Mavic2Pro/`에 로컬 포함하고 상대 경로로 참조.
+
+2. **고도가 0.2~4.2m로 진동** — 순정 Mavic 데모 월드는 `WorldInfo.defaultDamping`(linear/angular 0.5)에 의존해 안정화되는데 `my_world.wbt`에는 그 설정이 없었다. 격리 테스트로 원인을 분리한 결과 **`basicTimeStep`은 무관**(8ms로 낮춰도 동일하게 진동), **댐핑이 원인**. → 전역으로 켜면 UGV/Spot 물리까지 바뀌므로 **드론 PROTO의 `Physics.damping`에만** 동일 값을 걸었다. 시뮬레이션 속도 손해 없음.
+
+3. **고도 39% 오버슈트** — 순정 제어 법칙은 고도를 **P항만으로** 제어한다. 이중적분기에 P 제어만 걸면 준안정이라, 위 2번의 댐핑이 사실상 D항을 대신하고 있었다. → 컨트롤러에 `k_vertical_d`(수직 속도 D항, `wb_gps_get_speed_vector()` 사용)를 추가. 2.79m 오버슈트가 사라지고 2.000m에 단조 수렴한다.
+
+4. **Webots GUI에서 월드를 저장하면 드론 컨트롤러가 `"<none>"`으로 바뀜** — Spot.proto 절대경로 변형과 같은 부류의 현상. 저장 후 `controller "mavic2pro_medium"`인지 확인할 것.
+
+### 11-5. 알려진 한계 / 다음 작업
+
+- **거리 센서 없음** — 자율 비행·장애물 회피에 필요. 뎁스카메라(`cameraSlot`, 짐벌 안정화를 공짜로 받음) + 하향 거리센서 조합이 유력. 이게 붙어야 SLAM/Nav2를 연결할 수 있다.
+- **속도 제어이지 위치 제어가 아님** — `cmd_vel`이 0이면 속도 0을 능동 유지하지만(드리프트 0.009 m/s), 바람 같은 외란에 밀린 뒤 원위치로 돌아가지는 않는다. 웨이포인트 비행에는 위치 루프가 추가로 필요하며, Nav2를 붙이면 Nav2가 그 역할을 한다.
+- **짐벌이 각속도 댐핑만 함** — 순항 중 기체가 5~15° 기울면 카메라도 같이 기운다. 정찰 용도로는 자세 자체를 상쇄하도록(`-roll`/`-pitch`) 바꾸는 편이 낫다.
+
+> 참고: 초기에는 Webots 내장 C 컨트롤러(`controllers/mavic2pro_medium/`)로 키보드 조종을 했으나, OS별 컴파일이 필요하고 ROS 2 미션 스택에 붙일 수 없어 폐기했다. 11-4의 물리 이슈들은 그 컨트롤러로 규명한 것이며 결론은 그대로 유효하다. 필요하면 `git log -- workspace/simulator/controllers/`에서 복원할 수 있다.
+
 ## 향후 계획
 - Gemini api 연동
-- Drone 추가
+- Drone 추가 → 기체 구성·비행 검증 완료, ROS 2 연동 남음 ([11](#11-drone-중형급-쿼드콥터) 참고)
 - 지도 생성 및 로봇 생성 자동화
 - ~~윈도우 환경도 bridge 네트워크로 전환 테스트~~ → 완료 ([8-2](#8-2-windows-네트워킹-참고사항-웹-개발자용) 참고)
 - ~~Spot 추가~~ → 완료 (다리 제어 + 뎁스카메라 SLAM 맵 생성까지 확인, [10-6](#10-6-해결된-이슈-트러블슈팅-기록) 참고)

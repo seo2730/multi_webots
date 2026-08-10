@@ -36,11 +36,14 @@ services:
     <<: *ros-common
     container_name: rviz_master_windows
     environment:
+      - DISPLAY=${DISPLAY:-host.docker.internal:0}
       - ROS_DOMAIN_ID=30
     # 🌟 [수정] 실행 전에 반드시 환경(setup.bash)을 먼저 로드(source)합니다!
+    # 🗺️ RViz2 + 맵 병합(map_merger)을 함께 띄웁니다. 로봇별 SLAM 맵을 world
+    #    프레임 기준으로 합쳐 /map_merged 로 발행합니다. (자세한 내용: MAP_MERGE.md)
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
-               ros2 run rviz2 rviz2 -d /ros2_ws/src/webots_python/rviz/webots_rviz.rviz"
+               ros2 launch webots_map_merge master.launch.py"
 
   # 2. UGV1 독립 컨테이너
   ugv1:
@@ -52,6 +55,10 @@ services:
       - ROS_LOCALHOST_ONLY=0
       - ROS_DOMAIN_ID=30
       - ROBOT_ID=ugv1
+      # 🗺️ 맵 병합용 월드 절대 초기 위치 (my_world.wbt 스폰 좌표)
+      - ROBOT_INIT_X=-6.159
+      - ROBOT_INIT_Y=1.263
+      - ROBOT_INIT_YAW=-2.910
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
                ros2 launch webots_python single_ugv.launch.py"
@@ -68,6 +75,10 @@ services:
       - ROS_LOCALHOST_ONLY=0
       - ROS_DOMAIN_ID=30
       - ROBOT_ID=ugv2
+      # 🗺️ 맵 병합용 월드 절대 초기 위치 (my_world.wbt 스폰 좌표)
+      - ROBOT_INIT_X=8.376
+      - ROBOT_INIT_Y=1.373
+      - ROBOT_INIT_YAW=-0.064
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
                ros2 launch webots_python single_ugv.launch.py"
@@ -84,8 +95,34 @@ services:
       - ROS_LOCALHOST_ONLY=0
       - ROS_DOMAIN_ID=30
       - ROBOT_ID=spot1
+      # 🗺️ 맵 병합용 월드 절대 초기 위치 (my_world.wbt 스폰 좌표)
+      # ⚠️ spot1 런치는 서브모듈이라 robot_registrar가 아직 안 붙어 있습니다.
+      #    지금은 마스터의 config/robots.yaml 값으로 병합됩니다. (MAP_MERGE.md 참고)
+      - ROBOT_INIT_X=-0.84
+      - ROBOT_INIT_Y=-0.34
+      - ROBOT_INIT_YAW=0.0
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
                ros2 launch webots_spot single_spot_launch.py"
+    depends_on:
+      - master
+
+  # 5. 드론 독립 컨테이너
+  drone1:
+    <<: *ros-common
+    container_name: drone1_brain_windows
+    environment:
+      - DISPLAY=${DISPLAY:-host.docker.internal:0}
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - ROS_LOCALHOST_ONLY=0
+      - ROS_DOMAIN_ID=30
+      - ROBOT_ID=drone1
+      # 🗺️ 드론은 SLAM이 없어 맵 병합엔 참여하지 않지만, 위치는 알려둡니다.
+      - ROBOT_INIT_X=-6.5
+      - ROBOT_INIT_Y=5.5
+      - ROBOT_INIT_YAW=0.0
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 launch webots_python single_drone.launch.py"
     depends_on:
       - master
