@@ -1,0 +1,58 @@
+# 맵 병합 설정 (마스터 관제 컨테이너 전용)
+#
+# 노드 이름 대신 와일드카드(/**)를 쓴다. mapper_params_online_async.yaml과 같은 방식.
+/**:
+  ros__parameters:
+    use_sim_time: true
+
+    # 모든 로봇 맵이 못 박히는 공통 기준 프레임. RViz의 Fixed Frame을 여기로 맞춘다.
+    world_frame: world
+    merged_map_topic: /map_merged
+
+    # 병합 격자 해상도. 로봇들의 SLAM 해상도(0.1)와 맞추는 게 가장 깔끔하다.
+    resolution: 0.1
+
+    merge_rate: 1.0          # 병합 발행 주기(Hz). 넓은 맵일수록 낮추면 가벼워진다.
+    discovery_rate: 0.5      # 새 로봇 탐색 주기(Hz)
+    robot_timeout: 15.0      # 이 시간(초) 동안 소식 없으면 병합에서 제외
+    padding: 1.0             # 병합 격자 가장자리 여유(m)
+    max_merged_cells: 8000000  # 초기 위치가 잘못됐을 때 메모리 폭주 방지용 안전장치
+
+    auto_discovery: true     # /{ns}/map 토픽을 그래프에서 자동으로 찾을지
+    publish_static_tf: true  # world -> {ns}/map static TF를 쏠지
+    map_topic_pattern: '^/([^/]+)/map$'
+    registry_topic: /robot_registry
+
+    # ------------------------------------------------------------------
+    # 로봇별 초기 위치 (Webots my_world.wbt의 스폰 좌표, world 절대좌표)
+    #
+    # 여기 값은 "미리 알고 있는 기본값"이고, 로봇이 robot_registrar로 보낸
+    # 값이 들어오면 그쪽이 우선한다. 둘 다 없으면 원점(0,0,0)으로 가정하고
+    # 경고를 찍는다.
+    #
+    # ⚠️ init_yaw는 .wbt의 rotation 필드에서 축이 z(0 0 1)일 때의 angle 값이다.
+    #    축이 z가 아니면(예: ugv2처럼 기울어져 저장된 경우) z 성분 부호를 곱해
+    #    근사해야 한다. 자세한 건 MAP_MERGE.md 참고.
+    # ------------------------------------------------------------------
+    robots:
+      ugv1:
+        init_x: -6.159
+        init_y: 1.263
+        init_yaw: -2.910
+        has_map: true
+      ugv2:
+        init_x: 8.376
+        init_y: 1.373
+        init_yaw: -0.064
+        has_map: true
+      spot1:
+        init_x: -0.84
+        init_y: -0.34
+        init_yaw: 0.0
+        has_map: true
+      drone1:
+        # 드론은 SLAM을 돌리지 않아 맵이 없다. 병합 대상에서 빼되 목록에는 남겨둔다.
+        init_x: -6.5
+        init_y: 5.5
+        init_yaw: 0.0
+        has_map: false

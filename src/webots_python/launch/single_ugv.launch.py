@@ -119,7 +119,18 @@ def generate_launch_description():
     )
 
     # ---------------------------------------------------------
-    # 🌟 [F] Navigation2 (Nav2) 추가!
+    # [F] 마스터 맵 병합용 등록 (초기 위치 + 하트비트)
+    #     초기 위치는 docker-compose의 ROBOT_INIT_X/Y/YAW 환경변수에서 읽는다.
+    # ---------------------------------------------------------
+    registrar_node = Node(
+        package='webots_map_merge',
+        executable='robot_registrar',
+        namespace=ns,
+        parameters=[{'robot_id': ns, 'has_map': True, 'map_topic': f'/{ns}/map'}],
+    )
+
+    # ---------------------------------------------------------
+    # 🌟 [G] Navigation2 (Nav2) 추가!
     # ---------------------------------------------------------
     nav2_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(navigation_pkg_dir, 'launch', 'nav2.launch.py')),
@@ -145,5 +156,6 @@ def generate_launch_description():
         pc_to_scan_node,
         slam_node,
         web_goal_relay_node,
+        registrar_node,
         delayed_nav2_launch # 🌟 지연된 Nav2 사용
     ])
