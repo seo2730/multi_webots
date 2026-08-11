@@ -213,13 +213,17 @@ export ROS_LOCALHOST_ONLY=0
   | 목표점 토픽 | `/{ns}/goal_pose` (`geometry_msgs/msg/PoseStamped`) |
 
   즉 `ugv1`과 `ugv2`는 서로 다른 좌표계를 쓰며, 한 로봇의 좌표를 다른 로봇에 그대로 써도 안 맞음.
-- **목표점 좌표는 월드 절대좌표가 아니라 각 로봇 자신의 map 프레임 기준.** SLAM이 매핑을 시작하는 시점(로봇 스폰 시점) 근처가 대략 그 로봇 map 프레임의 원점(0,0)이 됨.
+- **목표점 좌표는 각 로봇 자신의 map 프레임 기준.** 다만 이 프로젝트에서 **각 로봇의 `{ns}/map` 원점은 사실상 Webots 월드 원점과 같다.** Webots 드라이버가 `odom → base_link`를 GPS 원값(= 월드 절대좌표)으로 발행하기 때문 ([robot_driver.py:117-119](src/Webots-SummitXL/workspace/simulator/simulator/robot_driver.py#L117-L119)). 즉 좌표 **값**은 로봇끼리 사실상 호환되지만, **프레임 이름은 여전히 로봇별로 달라서** `frame_id`는 정확히 맞춰야 함.
+  > ⚠️ "map 프레임 원점 = 로봇 스폰 위치"로 오해하기 쉬운데 **아님.** 실제로 이 오해 때문에 맵 병합에서 좌표가 정확히 두 배로 어긋나는 버그가 났었음 ([맵 병합 문서 2장](MAP_MERGE.md#2-정렬-설계--world-앵커-프레임)).
 - **Webots 월드(`my_world.wbt`) 상의 초기 스폰 위치** (참고용, world 절대좌표):
   | 로봇 | world x, y |
   |---|---|
   | ugv1 | -6.16, 1.26 |
   | ugv2 | 8.38, 1.37 |
 - 웹에서 지도 클릭으로 목표점을 보낼 때는 `/web/goal_point`(`geometry_msgs/msg/PointStamped`)로 발행하되, **`frame_id`가 정확히 `{ns}/map`이어야** [web_goal_relay.py](src/webots_goal_bridge/webots_goal_bridge/web_goal_relay.py)가 해당 로봇의 `goal_pose`로 중계함 (다른 frame_id는 무시됨).
+- **전역 병합 맵도 있음.** 마스터 관제 컨테이너가 로봇별 맵을 공통 `world` 프레임 기준으로 합쳐 `/map_merged`(`nav_msgs/msg/OccupancyGrid`)로 발행. 새 로봇이 추가되면 마스터 수정·재시작 없이 자동으로 합류함.
+
+> 💡 병합 설계 근거(왜 직접 짰는지), 로봇 자동 발견 구조, 알고리즘, 검증 결과, 트러블슈팅 전체 기록은 별도 문서로 정리해둠 → **[다중 로봇 맵 병합 구축 기록](MAP_MERGE.md)**
 
 ---
 
@@ -489,7 +493,8 @@ docker exec -it drone1_brain_windows bash -c \
 ## 향후 계획
 - Gemini api 연동
 - Drone 추가 → 기체 구성·비행 검증 완료, ROS 2 연동 남음 ([11](#11-drone-중형급-쿼드콥터) 참고)
-- 지도 생성 및 로봇 생성 자동화
+- 로봇 생성 자동화
+- ~~다중 로봇 지도 병합~~ → 완료 (마스터 관제 컨테이너에서 `/map_merged` 발행, 로봇 자동 합류/이탈까지 확인. [맵 병합 구축 기록](MAP_MERGE.md) 참고)
 - ~~윈도우 환경도 bridge 네트워크로 전환 테스트~~ → 완료 ([8-2](#8-2-windows-네트워킹-참고사항-웹-개발자용) 참고)
 - ~~Spot 추가~~ → 완료 (다리 제어 + 뎁스카메라 SLAM 맵 생성까지 확인, [10-6](#10-6-해결된-이슈-트러블슈팅-기록) 참고)
 
