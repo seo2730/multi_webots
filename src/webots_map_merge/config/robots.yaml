@@ -20,19 +20,33 @@
 
     auto_discovery: true     # /{ns}/map 토픽을 그래프에서 자동으로 찾을지
     publish_static_tf: true  # world -> {ns}/map static TF를 쏠지
+
+    # ------------------------------------------------------------------
+    # 🚨 이 프로젝트에서 가장 중요한 설정
+    #
+    # Webots 드라이버(Webots-SummitXL/workspace/simulator/simulator/robot_driver.py)가
+    # odom -> base_link 를 GPS 원값, 즉 **월드 절대좌표** 로 그대로 발행한다.
+    #     t.transform.translation.x = float(gps_vals[0])   # 월드 절대 X
+    #
+    # 그래서 각 로봇의 odom/map 프레임은 이미 Webots 월드 원점을 공유한다.
+    # 여기에 스폰 좌표를 또 더하면 정확히 두 배로 어긋난다(실측 확인).
+    #   -> true  : world -> {ns}/map 을 항등변환으로 둔다 (이 프로젝트의 정답)
+    #   -> false : 아래 robots: 의 초기 위치를 앵커로 쓴다
+    #              (오도메트리가 로봇 자기 출발점 기준인 실제 로봇용)
+    # ------------------------------------------------------------------
+    odom_is_world_absolute: true
     map_topic_pattern: '^/([^/]+)/map$'
     registry_topic: /robot_registry
 
     # ------------------------------------------------------------------
     # 로봇별 초기 위치 (Webots my_world.wbt의 스폰 좌표, world 절대좌표)
     #
-    # 여기 값은 "미리 알고 있는 기본값"이고, 로봇이 robot_registrar로 보낸
-    # 값이 들어오면 그쪽이 우선한다. 둘 다 없으면 원점(0,0,0)으로 가정하고
-    # 경고를 찍는다.
+    # ⚠️ 위 odom_is_world_absolute: true 인 동안 init_x/y/yaw 는 **사용되지 않는다.**
+    #    실제 로봇으로 넘어가 오도메트리가 자기 출발점 기준이 되면 그때 쓰인다.
+    #    has_map 만 지금도 유효하다 (드론처럼 맵이 없는 로봇을 걸러내는 용도).
     #
-    # ⚠️ init_yaw는 .wbt의 rotation 필드에서 축이 z(0 0 1)일 때의 angle 값이다.
-    #    축이 z가 아니면(예: ugv2처럼 기울어져 저장된 경우) z 성분 부호를 곱해
-    #    근사해야 한다. 자세한 건 MAP_MERGE.md 참고.
+    # init_yaw는 .wbt의 rotation 필드에서 축이 z(0 0 1)일 때의 angle 값이다.
+    # 축의 z 성분이 음수면 부호를 뒤집는다. 자세한 건 MAP_MERGE.md 참고.
     # ------------------------------------------------------------------
     robots:
       ugv1:

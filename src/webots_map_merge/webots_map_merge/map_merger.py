@@ -98,6 +98,11 @@ class MapMerger(Node):
         self.timeout_sec = float(self._param('robot_timeout', 15.0))
         self.auto_discovery = bool(self._param('auto_discovery', True))
         self.publish_static_tf = bool(self._param('publish_static_tf', True))
+        # 이 프로젝트의 Webots 드라이버는 odom->base_link 를 GPS 원값,
+        # 즉 월드 절대좌표로 그대로 발행한다 (robot_driver.py 참고).
+        # 그래서 각 로봇의 map 프레임이 이미 world 와 정렬돼 있고,
+        # 여기에 스폰 좌표를 또 더하면 정확히 두 배로 어긋난다.
+        self.odom_is_world_absolute = bool(self._param('odom_is_world_absolute', True))
         self.padding = float(self._param('padding', 1.0))
         self.max_cells = int(self._param('max_merged_cells', 8_000_000))
         self.map_topic_regex = re.compile(self._param('map_topic_pattern', r'^/([^/]+)/map$'))
@@ -115,10 +120,13 @@ class MapMerger(Node):
         self.create_timer(1.0 / max(self.discovery_rate, 0.01), self._discover)
         self.create_timer(1.0 / max(self.merge_rate, 0.01), self._merge_and_publish)
 
+        anchor_mode = ('오도메트리가 월드 절대좌표 -> world->{ns}/map 항등변환'
+                       if self.odom_is_world_absolute else '스폰 초기위치를 앵커로 사용')
         self.get_logger().info(
             f"맵 병합 시작 | world='{self.world_frame}' -> '{self.merged_topic}' "
             f"| 해상도 {self.resolution}m | 병합 {self.merge_rate}Hz "
             f"| 자동탐색 {'ON' if self.auto_discovery else 'OFF'}")
+        self.get_logger().info(f'정렬 기준: {anchor_mode}')
 
     # ------------------------------------------------------------------
     # 파라미터 / 설정
@@ -253,14 +261,28 @@ class MapMerger(Node):
     def _active(self) -> list[Robot]:
         return [r for r in self.robots.values() if r.last_seen_ns > 0]
 
+    def _anchor_of(self, robot: Robot) -> tuple[float, float, float]:
+        """`world -> {ns}/map` 변환값.
+
+        오도메트리가 이미 월드 절대좌표면(이 프로젝트의 기본) 항등변환이다.
+        각 로봇의 map 프레임이 이미 같은 원점을 공유하므로 더 보탤 것이 없다.
+
+        실제 로봇처럼 오도메트리가 로봇 자기 출발점 기준(0,0)일 때만
+        스폰 좌표를 앵커로 써야 한다.
+        """
+        if self.odom_is_world_absolute:
+            return 0.0, 0.0, 0.0
+        return robot.init_x, robot.init_y, robot.init_yaw
+
     def _refresh_static_tf(self):
         """활성 로봇 목록이 바뀔 때만 static TF 전체를 다시 쏜다."""
         if not self.publish_static_tf:
             return
 
         active = [r for r in self._active() if r.has_map]
+        anchors = {r.ns: self._anchor_of(r) for r in active}
         signature = tuple(sorted(
-            (r.ns, round(r.init_x, 4), round(r.init_y, 4), round(r.init_yaw, 4)) for r in active))
+            (r.ns, ) + tuple(round(v, 4) for v in anchors[r.ns]) for r in active))
         if signature == self._tf_signature:
             return
         self._tf_signature = signature
@@ -268,14 +290,15 @@ class MapMerger(Node):
         transforms = []
         now = self.get_clock().now().to_msg()
         for robot in active:
+            ax, ay, ayaw = anchors[robot.ns]
             tf = TransformStamped()
             tf.header.stamp = now
             tf.header.frame_id = self.world_frame
             tf.child_frame_id = robot.map_frame
-            tf.transform.translation.x = robot.init_x
-            tf.transform.translation.y = robot.init_y
-            tf.transform.rotation.z = math.sin(robot.init_yaw / 2.0)
-            tf.transform.rotation.w = math.cos(robot.init_yaw / 2.0)
+            tf.transform.translation.x = ax
+            tf.transform.translation.y = ay
+            tf.transform.rotation.z = math.sin(ayaw / 2.0)
+            tf.transform.rotation.w = math.cos(ayaw / 2.0)
             transforms.append(tf)
 
         if transforms:
@@ -290,15 +313,16 @@ class MapMerger(Node):
         """격자 원점(좌하단 셀 모서리)의 world 기준 위치와 회전을 구한다.
 
         world <- {ns}/map <- 격자원점 두 변환의 합성:
-            theta = init_yaw + origin_yaw
-            t     = R(init_yaw) * origin_xy + init_xy
+            theta = anchor_yaw + origin_yaw
+            t     = R(anchor_yaw) * origin_xy + anchor_xy
         """
+        ax, ay, ayaw = self._anchor_of(robot)
         origin = robot.grid.info.origin
         origin_yaw = yaw_from_quaternion(origin.orientation)
-        c, s = math.cos(robot.init_yaw), math.sin(robot.init_yaw)
-        tx = c * origin.position.x - s * origin.position.y + robot.init_x
-        ty = s * origin.position.x + c * origin.position.y + robot.init_y
-        return tx, ty, robot.init_yaw + origin_yaw
+        c, s = math.cos(ayaw), math.sin(ayaw)
+        tx = c * origin.position.x - s * origin.position.y + ax
+        ty = s * origin.position.x + c * origin.position.y + ay
+        return tx, ty, ayaw + origin_yaw
 
     def _merge_and_publish(self):
         usable = [r for r in self._active() if r.has_map and r.grid is not None]
