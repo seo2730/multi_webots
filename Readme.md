@@ -386,6 +386,8 @@ ros2 topic pub /spot1/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.3, y: 0.0,
 
 DJI Mavic 2 Pro를 중형급(6.35kg)으로 개조한 `Mavic2ProMedium`. UGV·Spot과 동일하게 **`<extern>` 컨트롤러 + ROS 2 드라이버** 구조로 동작한다.
 
+> 💡 기체 개조 방식, 2단 제어 구조와 게인 근거, 검증 방법, 트러블슈팅 전체 기록은 별도 문서로 정리해둠 → **[드론 구축 기록](drone_setup.md)** (여기 11장은 사용법 요약)
+
 ### 11-1. 실행
 
 다른 로봇과 동일하다. 월드에서 `controller "<extern>"`이므로 컨테이너를 띄워야 드론이 움직인다 (안 띄우면 Webots가 컨트롤러를 기다리며 멈춘다).
