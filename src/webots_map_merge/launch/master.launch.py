@@ -51,6 +51,16 @@ def generate_launch_description():
         remappings=[('/tf', '/tf'), ('/tf_static', '/tf_static')],
     )
 
+    # 아무도 발행하지 않는 관절(UGV 바퀴, Spot 팔)을 0으로 채워 TF 트리를 온전하게 만든다.
+    # 이게 없으면 RViz 의 RobotModel 이 링크 TF 부재로 빨간 에러가 된다.
+    joint_filler_node = Node(
+        package='webots_map_merge',
+        executable='joint_state_filler',
+        name='joint_state_filler',
+        output='screen',
+        parameters=[{'use_sim_time': True}],
+    )
+
     rviz_node = Node(
         condition=IfCondition(use_rviz),
         package='rviz2',
@@ -68,5 +78,6 @@ def generate_launch_description():
         declare_rviz_config,
         declare_params_file,
         map_merger_node,
+        joint_filler_node,
         rviz_node,
     ])

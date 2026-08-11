@@ -32,6 +32,7 @@ setup(
         'console_scripts': [
             'map_merger = webots_map_merge.map_merger:main',
             'robot_registrar = webots_map_merge.robot_registrar:main',
+            'joint_state_filler = webots_map_merge.joint_state_filler:main',
         ],
     },
 )

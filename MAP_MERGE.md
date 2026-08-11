@@ -129,6 +129,7 @@ src/webots_map_merge/
 | 파일 | 어디서 도나 | 하는 일 |
 |---|---|---|
 | [map_merger.py](src/webots_map_merge/webots_map_merge/map_merger.py) | 마스터 1개 | 로봇 발견 → 맵 구독 → `world` 기준 병합 → `/map_merged` 발행, `world→{ns}/map` static TF 발행 |
+| [joint_state_filler.py](src/webots_map_merge/webots_map_merge/joint_state_filler.py) | 마스터 1개 | 아무도 발행하지 않는 관절을 0으로 채워 TF 트리를 온전하게 만듦 ([10절](#-rviz의-robotmodel이-빨갛게-뜰-때) 참고) |
 | [robot_registrar.py](src/webots_map_merge/webots_map_merge/robot_registrar.py) | 로봇마다 1개 | 1Hz로 `/robot_registry`에 자기 ID·초기 위치·맵 유무를 알림 (하트비트 겸용) |
 | [robots.yaml](src/webots_map_merge/config/robots.yaml) | 마스터 | 미리 아는 초기 위치 + 병합 주기/해상도 등 |
 
@@ -429,6 +430,42 @@ Webots는 **동기화 모드 extern 컨트롤러가 전부 접속할 때까지 �
 ```bash
 docker compose -f docker-configs/windows/docker-compose.yml up -d   # 전부
 ```
+
+### ⚠️ RViz의 RobotModel이 빨갛게 뜰 때
+
+`RobotModel`은 **URDF 링크 하나라도 TF가 없으면 통째로 빨간 에러**가 된다.
+그리고 `robot_state_publisher`는 `joint_states`를 받아야 움직이는 관절의 TF를 만들기 때문에,
+관절 상태가 안 오면 그 아래 링크 전체의 TF가 사라진다.
+
+이 프로젝트에서 실측된 누락:
+
+| 로봇 | 움직이는 관절 | joint_states 수신 | 누락 | 원인 |
+|---|---|---|---|---|
+| ugv1 / ugv2 | 4 | **0** | 4 (바퀴) | [robot_driver.py:24-36](src/Webots-SummitXL/workspace/simulator/simulator/robot_driver.py#L24-L36)이 바퀴 모터를 **구동만 하고 상태를 발행하지 않음** |
+| spot1 | 25 | 16 | 9 (팔·그리퍼) | 월드의 Spot에 팔이 안 달려 있는데 URDF에는 팔이 들어 있음 |
+| drone1 | 0 | 0 | 0 | 움직이는 관절이 없어 문제 없음 |
+
+`joint_state_filler` 노드가 이걸 메운다. `/{ns}/robot_description`에서 움직이는 관절 목록을 뽑고,
+`/{ns}/joint_states`를 지켜보다가 **한 번도 안 나타난 관절만** 0으로 발행한다.
+드라이버가 실제로 발행하는 관절은 건드리지 않으므로 값이 덮어써지지 않는다
+(robot_state_publisher는 부분 JointState를 받아 내부에서 합친다).
+
+```
+[ugv1] 아무도 발행하지 않는 관절 4개를 0으로 채움: back_left_wheel_joint, ...
+```
+
+**이건 TF 트리를 온전하게 만드는 대증요법이다.** 두 가지를 감수한다.
+
+- UGV 바퀴가 화면에서 돌지 않는다. 제대로 고치려면 `robot_driver.py`가
+  바퀴 PositionSensor 값을 읽어 `JointState`로 발행해야 하는데, 그 파일은 서브모듈이다.
+- Spot 팔이 접힌 자세로 그려진다. 실제로는 안 달려 있는 팔이다.
+  거슬리면 RViz의 `spot1 model` → Links에서 `spotarm_*` / `gripper_*` 링크를 체크 해제하면 된다.
+
+지금 이 값들을 쓰는 소비자는 없다 (오도메트리가 GPS 기반이라 바퀴 각도와 무관).
+
+> 구현 시 주의: 이 노드는 자기가 발행하는 토픽을 동시에 구독한다. 그래서 누락 판단을
+> 매 주기 다시 하면 **자기가 쏜 메시지를 "이미 누가 발행 중"으로 오인해 발행을 멈춘다.**
+> 정착 시간(`settle_time`, 기본 8초) 후 한 번만 판단하고 목록을 고정하는 이유다.
 
 ### RViz2가 죽어도 병합은 계속된다
 Windows에서 X 서버(VcXsrv 등)가 안 떠 있으면 `rviz2` 프로세스가 종료된다
