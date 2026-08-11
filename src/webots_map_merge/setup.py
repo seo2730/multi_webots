@@ -33,6 +33,7 @@ setup(
             'map_merger = webots_map_merge.map_merger:main',
             'robot_registrar = webots_map_merge.robot_registrar:main',
             'joint_state_filler = webots_map_merge.joint_state_filler:main',
+            'robot_marker_publisher = webots_map_merge.robot_marker_publisher:main',
         ],
     },
 )

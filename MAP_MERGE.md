@@ -130,6 +130,7 @@ src/webots_map_merge/
 |---|---|---|
 | [map_merger.py](src/webots_map_merge/webots_map_merge/map_merger.py) | 마스터 1개 | 로봇 발견 → 맵 구독 → `world` 기준 병합 → `/map_merged` 발행, `world→{ns}/map` static TF 발행 |
 | [joint_state_filler.py](src/webots_map_merge/webots_map_merge/joint_state_filler.py) | 마스터 1개 | 아무도 발행하지 않는 관절을 0으로 채워 TF 트리를 온전하게 만듦 ([10절](#-rviz의-robotmodel이-빨갛게-뜰-때) 참고) |
+| [robot_marker_publisher.py](src/webots_map_merge/webots_map_merge/robot_marker_publisher.py) | 마스터 1개 | TF에서 로봇을 찾아 `/robot_markers`로 발행 → **새 로봇이 RViz에 자동으로 나타남** |
 | [robot_registrar.py](src/webots_map_merge/webots_map_merge/robot_registrar.py) | 로봇마다 1개 | 1Hz로 `/robot_registry`에 자기 ID·초기 위치·맵 유무를 알림 (하트비트 겸용) |
 | [robots.yaml](src/webots_map_merge/config/robots.yaml) | 마스터 | 미리 아는 초기 위치 + 병합 주기/해상도 등 |
 
@@ -255,12 +256,37 @@ docker compose -f docker-configs/windows/docker-compose.yml up --build
 master 컨테이너가 관제용 설정([master_merged.rviz](src/webots_map_merge/rviz/master_merged.rviz))으로
 RViz2를 자동으로 띄운다. 따로 설정할 것은 없다.
 
-| 표시 이름 | 내용 |
-|---|---|
-| **Merged Map** | `/map_merged` 전체 병합 맵 (Fixed Frame = `world`) |
-| **Robot Poses (TF)** | 각 로봇 `base_link`에 축 + 이름표 |
-| **{ns} model** | 각 로봇의 3D 모델 (`/{ns}/robot_description`에서 URDF 수신) |
-| ugv1/ugv2 scan | 기본 꺼짐. 필요하면 체크해서 켠다 |
+| 표시 이름 | 내용 | 새 로봇 자동 반영 |
+|---|---|---|
+| **Merged Map** | `/map_merged` 전체 병합 맵 (Fixed Frame = `world`) | ✅ |
+| **Robots (auto)** | `/robot_markers` — 로봇마다 화살표 + 이름표 | ✅ |
+| **Robot Poses (TF)** | 각 로봇 `base_link`에 축 + 이름표 | ❌ 프레임을 하나씩 지정 |
+| **{ns} model** | 각 로봇의 3D 모델 (`/{ns}/robot_description`에서 URDF 수신) | ❌ 로봇당 디스플레이 1개 |
+| ugv1/ugv2 scan | 기본 꺼짐. 필요하면 체크해서 켠다 | ❌ |
+
+### 새 로봇이 RViz에 자동으로 나타나게 하는 방법
+
+**RViz2는 디스플레이를 자동으로 추가하지 못한다.** 설정 파일을 읽는 시점에 고정되므로,
+로봇당 하나씩 필요한 `RobotModel` 같은 디스플레이는 새 로봇이 생겨도 저절로 안 생긴다.
+(Humble의 TF 디스플레이에는 whitelist 필터도 없어서, 프레임을 패턴으로 걸러낼 수도 없다.
+`rviz_default_plugins` 11.2.27 기준으로 확인함.)
+
+그래서 **"하나의 디스플레이가 여러 대상을 그리는" 방식**으로 우회한다.
+`robot_marker_publisher`가 TF 트리에서 `{ns}/base_link` 형태의 프레임을 전부 찾아
+각 로봇 위치에 화살표 + 이름표 마커를 만들고 `/robot_markers` 하나로 발행한다.
+RViz에는 **MarkerArray 디스플레이 하나만** 있으면 되고, 로봇이 늘어나도 설정을 안 고쳐도 된다.
+
+발견 기준을 TF로 잡은 이유는, 맵이 없는 로봇(드론)이나 등록 노드를 안 띄운 로봇(spot1)도
+`world`에 연결만 되어 있으면 전부 잡히기 때문이다.
+
+| | 자동 | 수동 |
+|---|---|---|
+| 위치·방향·이름 | ✅ 마커로 자동 | |
+| 병합 맵 기여 | ✅ 자동 | |
+| 3D 메시 모델 | | RViz에서 RobotModel 디스플레이 추가 (Description Topic = `/{ns}/robot_description`, **TF Prefix = `{ns}`**) |
+
+즉 **새 로봇은 아무것도 안 해도 위치와 이름이 뜨고**, 3D 모델까지 보고 싶을 때만
+디스플레이를 하나 추가하면 된다.
 
 시점은 위에서 내려다보는 TopDownOrtho가 기본이고, Views 패널의 **Angled View**를
 고르면 3D로 볼 수 있다.
@@ -466,6 +492,24 @@ docker compose -f docker-configs/windows/docker-compose.yml up -d   # 전부
 > 구현 시 주의: 이 노드는 자기가 발행하는 토픽을 동시에 구독한다. 그래서 누락 판단을
 > 매 주기 다시 하면 **자기가 쏜 메시지를 "이미 누가 발행 중"으로 오인해 발행을 멈춘다.**
 > 정착 시간(`settle_time`, 기본 8초) 후 한 번만 판단하고 목록을 고정하는 이유다.
+
+### 🚨 로봇 노드는 반드시 `use_sim_time: true` 로 띄울 것
+
+이걸 빠뜨린 노드가 TF를 쏘면 **벽시계 시각(에포크 초)** 이 찍힌다. 시뮬 시각은
+보통 수백~수천 초라서, tf2 입장에서는 아득한 미래의 데이터가 들어온 셈이 된다.
+그 결과:
+
+- 이후에 들어오는 **정상 데이터가 전부 `TF_OLD_DATA`로 거부**된다
+  (`ignoring data from the past for frame ...`)
+- 나이 계산이 계속 음수라 그 로봇이 **영원히 살아있는 것으로** 잡힌다
+- 노드를 재시작하기 전까지 버퍼가 회복되지 않는다
+
+`robot_marker_publisher`는 미래 시각의 TF를 이상 상태로 보고 경고를 남긴 뒤
+그 로봇을 제외한다. 로그에 이 경고가 보이면 해당 로봇의 `use_sim_time`을 확인한다.
+
+```
+미래 시각의 TF 발견 (280000.0초 앞섬). 해당 로봇이 use_sim_time 없이 실행 중일 가능성이 높음.
+```
 
 ### RViz2가 죽어도 병합은 계속된다
 Windows에서 X 서버(VcXsrv 등)가 안 떠 있으면 `rviz2` 프로세스가 종료된다

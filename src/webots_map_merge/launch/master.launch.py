@@ -61,6 +61,17 @@ def generate_launch_description():
         parameters=[{'use_sim_time': True}],
     )
 
+    # TF 에서 로봇을 찾아 위치 마커를 발행한다. RViz 는 디스플레이를 자동으로
+    # 추가하지 못하므로, 새 로봇이 늘어나도 설정을 안 고치려면 이렇게
+    # "하나의 디스플레이가 여러 로봇을 그리는" 방식이 필요하다.
+    marker_node = Node(
+        package='webots_map_merge',
+        executable='robot_marker_publisher',
+        name='robot_marker_publisher',
+        output='screen',
+        parameters=[{'use_sim_time': True}],
+    )
+
     rviz_node = Node(
         condition=IfCondition(use_rviz),
         package='rviz2',
@@ -79,5 +90,6 @@ def generate_launch_description():
         declare_params_file,
         map_merger_node,
         joint_filler_node,
+        marker_node,
         rviz_node,
     ])

@@ -6,7 +6,7 @@ Panels:
       Expanded:
         - /Global Options1
         - /Merged Map1
-        - /Robot Poses (TF)1
+        - /Robots (auto)1
       Splitter Ratio: 0.5
     Tree Height: 700
   - Class: rviz_common/Selection
@@ -68,13 +68,29 @@ Visualization Manager:
       Value: true
 
     # ------------------------------------------------------------------
-    # 로봇 위치 — TF 축 + 이름표. 로봇이 늘어나도 자동으로 따라온다.
-    # (URDF 링크가 수십 개라 base_link 만 켜두었다)
+    # 로봇 위치 (자동) — 마스터의 robot_marker_publisher 가 TF 를 훑어
+    # 발견한 모든 로봇에 화살표 + 이름표를 그린다.
+    # 새 로봇이 추가돼도 이 디스플레이 하나가 알아서 같이 그린다.
+    # ------------------------------------------------------------------
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Robots (auto)
+      Namespaces: {}
+      Topic:
+        Depth: 10
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /robot_markers
+      Value: true
+
+    # ------------------------------------------------------------------
+    # 로봇 위치 (TF 축) — 방향까지 정밀하게 볼 때. 이쪽은 프레임을 하나하나
+    # 지정하는 구조라 새 로봇은 수동으로 추가해야 한다.
+    # (Humble 의 TF 디스플레이에는 whitelist 필터가 없어서 전체 켜기는 너무 어수선하다)
     # ------------------------------------------------------------------
     - Class: rviz_default_plugins/TF
       Enabled: true
-      Filter (blacklist): ""
-      Filter (whitelist): ""
       Frame Timeout: 15
       Frames:
         All Enabled: false
