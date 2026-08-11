@@ -274,15 +274,25 @@ class MapMerger(Node):
             return 0.0, 0.0, 0.0
         return robot.init_x, robot.init_y, robot.init_yaw
 
+    def _anchor_child_frame(self, robot: Robot) -> str:
+        """world 에 매달 프레임 이름.
+
+        맵이 있는 로봇은 `{ns}/map`이 트리의 뿌리다.
+        맵이 없는 로봇(예: SLAM 없는 드론)은 `{ns}/odom`이 뿌리라서 그쪽을 매단다.
+        이렇게 해야 관제 화면에서 드론 위치도 같이 보인다.
+        """
+        return robot.map_frame if robot.has_map else f'{robot.ns}/odom'
+
     def _refresh_static_tf(self):
         """활성 로봇 목록이 바뀔 때만 static TF 전체를 다시 쏜다."""
         if not self.publish_static_tf:
             return
 
-        active = [r for r in self._active() if r.has_map]
+        active = self._active()
         anchors = {r.ns: self._anchor_of(r) for r in active}
         signature = tuple(sorted(
-            (r.ns, ) + tuple(round(v, 4) for v in anchors[r.ns]) for r in active))
+            (r.ns, self._anchor_child_frame(r)) + tuple(round(v, 4) for v in anchors[r.ns])
+            for r in active))
         if signature == self._tf_signature:
             return
         self._tf_signature = signature
@@ -294,7 +304,7 @@ class MapMerger(Node):
             tf = TransformStamped()
             tf.header.stamp = now
             tf.header.frame_id = self.world_frame
-            tf.child_frame_id = robot.map_frame
+            tf.child_frame_id = self._anchor_child_frame(robot)
             tf.transform.translation.x = ax
             tf.transform.translation.y = ay
             tf.transform.rotation.z = math.sin(ayaw / 2.0)

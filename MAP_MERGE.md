@@ -250,8 +250,26 @@ docker compose -f docker-configs/windows/docker-compose.yml up --build
 </details>
 
 ### RViz에서 보기
-1. **Global Options → Fixed Frame**을 `world`로 변경
-2. **Add → By topic → `/map_merged` → Map** 추가
+
+master 컨테이너가 관제용 설정([master_merged.rviz](src/webots_map_merge/rviz/master_merged.rviz))으로
+RViz2를 자동으로 띄운다. 따로 설정할 것은 없다.
+
+| 표시 | 내용 |
+|---|---|
+| **전체 병합 맵** | `/map_merged` (Fixed Frame = `world`) |
+| **로봇 위치 (TF)** | 각 로봇 `base_link`에 축 + 이름표 |
+| **{ns} 모델** | 각 로봇의 3D 모델 (`/{ns}/robot_description`에서 URDF 수신) |
+| ugv1/ugv2 스캔 | 기본 꺼짐. 필요하면 체크해서 켠다 |
+
+시점은 위에서 내려다보는 TopDownOrtho가 기본이고, Views 패널의 **"비스듬히 보기"**를
+고르면 3D로 볼 수 있다.
+
+> RViz 로그에 `GLSL link result: active samplers with a different type...` 에러가
+> 한 번 찍히는 경우가 있는데, Ogre 셰이더 링크 경고라 맵은 정상적으로 그려진다.
+> 만약 맵 영역이 실제로 비어 보이면 master 서비스에 `LIBGL_ALWAYS_SOFTWARE=1`을 넣어보면 된다.
+
+> 예전 `webots_python/rviz/webots_rviz.rviz`는 ugv1 단독 뷰(Fixed Frame이 `map`)라
+> 지금 구조와 맞지 않는다. 그대로 두었으니 개별 로봇을 볼 때만 쓰면 된다.
 
 ### 확인 명령어
 ```bash
@@ -447,10 +465,20 @@ Node(
 `/map_merged`는 **관제·시각화·웹 전용**이다. 각 로봇 Nav2는 계속 자기 `{ns}/map`을 쓴다.
 되먹이면 프레임 순환과 코스트맵 진동이 생긴다.
 
-### ⚠️ 드론은 병합 대상이 아니다
+### ⚠️ 드론은 병합 대상이 아니지만 화면에는 보인다
 `drone1`은 아직 거리 센서가 없어 SLAM을 못 돌린다. `has_map: false`로 등록해서
-마스터가 존재만 인지하고 맵 구독은 시도하지 않게 했다. 나중에 센서를 달고 SLAM을 붙이면
-[single_drone.launch.py](src/webots_python/launch/single_drone.launch.py)의 `has_map`을 `True`로 바꾸기만 하면 된다.
+마스터가 맵 구독은 시도하지 않는다.
+
+다만 **관제 화면에서 위치는 보여야 하므로**, 맵이 없는 로봇은 `{ns}/map` 대신
+`{ns}/odom`을 `world`에 매단다. 그래서 TF 로그가 이렇게 나온다.
+
+```
+[TF] 'world' -> ugv1/map, ugv2/map, spot1/map, drone1/odom
+```
+
+나중에 센서를 달고 SLAM을 붙이면
+[single_drone.launch.py](src/webots_python/launch/single_drone.launch.py)의 `has_map`을
+`True`로 바꾸기만 하면 자동으로 병합에 합류한다.
 
 ### mac 환경
 mac의 master 서비스는 VNC 스크립트(`/start_vnc.sh`)로 뜨는 구조라 자동 변경하지 않았다.

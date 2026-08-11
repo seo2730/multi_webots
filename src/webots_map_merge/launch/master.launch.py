@@ -24,12 +24,17 @@ def generate_launch_description():
     pkg_dir = get_package_share_directory('webots_map_merge')
     default_params = os.path.join(pkg_dir, 'config', 'robots.yaml')
 
-    # RViz 설정은 기존 webots_python 패키지 것을 그대로 쓴다.
-    rviz_config = os.path.join(
-        get_package_share_directory('webots_python'), 'rviz', 'webots_rviz.rviz')
+    # 관제용 RViz 설정: Fixed Frame = world, 전체 병합 맵 + 로봇 위치.
+    # 기존 webots_python 쪽 설정은 ugv1 단독 뷰라 그대로 두고 새로 만들었다.
+    rviz_config = LaunchConfiguration('rviz_config')
 
     declare_use_rviz = DeclareLaunchArgument(
         'use_rviz', default_value='true', description='RViz2를 함께 띄울지 여부')
+
+    declare_rviz_config = DeclareLaunchArgument(
+        'rviz_config',
+        default_value=os.path.join(pkg_dir, 'rviz', 'master_merged.rviz'),
+        description='관제 RViz 설정 파일')
 
     declare_params_file = DeclareLaunchArgument(
         'params_file', default_value=default_params,
@@ -60,6 +65,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         declare_use_rviz,
+        declare_rviz_config,
         declare_params_file,
         map_merger_node,
         rviz_node,
