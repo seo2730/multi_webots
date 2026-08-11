@@ -254,15 +254,19 @@ docker compose -f docker-configs/windows/docker-compose.yml up --build
 master 컨테이너가 관제용 설정([master_merged.rviz](src/webots_map_merge/rviz/master_merged.rviz))으로
 RViz2를 자동으로 띄운다. 따로 설정할 것은 없다.
 
-| 표시 | 내용 |
+| 표시 이름 | 내용 |
 |---|---|
-| **전체 병합 맵** | `/map_merged` (Fixed Frame = `world`) |
-| **로봇 위치 (TF)** | 각 로봇 `base_link`에 축 + 이름표 |
-| **{ns} 모델** | 각 로봇의 3D 모델 (`/{ns}/robot_description`에서 URDF 수신) |
-| ugv1/ugv2 스캔 | 기본 꺼짐. 필요하면 체크해서 켠다 |
+| **Merged Map** | `/map_merged` 전체 병합 맵 (Fixed Frame = `world`) |
+| **Robot Poses (TF)** | 각 로봇 `base_link`에 축 + 이름표 |
+| **{ns} model** | 각 로봇의 3D 모델 (`/{ns}/robot_description`에서 URDF 수신) |
+| ugv1/ugv2 scan | 기본 꺼짐. 필요하면 체크해서 켠다 |
 
-시점은 위에서 내려다보는 TopDownOrtho가 기본이고, Views 패널의 **"비스듬히 보기"**를
+시점은 위에서 내려다보는 TopDownOrtho가 기본이고, Views 패널의 **Angled View**를
 고르면 3D로 볼 수 있다.
+
+> **표시 이름은 반드시 영어로 쓸 것.** 컨테이너(`osrf/ros:humble-desktop`)에 한글 폰트가
+> 없어서 RViz 패널에서 한글이 전부 네모(□□)로 깨진다. 터미널 로그는 UTF-8로 정상 출력되므로
+> `map_merger`의 한글 로그는 그대로 둬도 된다.
 
 > RViz 로그에 `GLSL link result: active samplers with a different type...` 에러가
 > 한 번 찍히는 경우가 있는데, Ogre 셰이더 링크 경고라 맵은 정상적으로 그려진다.

@@ -5,8 +5,8 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
-        - /전체 병합 맵1
-        - /로봇 위치 (TF)1
+        - /Merged Map1
+        - /Robot Poses (TF)1
       Splitter Ratio: 0.5
     Tree Height: 700
   - Class: rviz_common/Selection
@@ -50,7 +50,7 @@ Visualization Manager:
       Color Scheme: map
       Draw Behind: false
       Enabled: true
-      Name: 전체 병합 맵
+      Name: Merged Map
       Topic:
         Depth: 1
         Durability Policy: Transient Local
@@ -89,7 +89,7 @@ Visualization Manager:
         drone1/base_link:
           Value: true
       Marker Scale: 2
-      Name: 로봇 위치 (TF)
+      Name: Robot Poses (TF)
       Show Arrows: false
       Show Axes: true
       Show Names: true
@@ -122,7 +122,7 @@ Visualization Manager:
       Mass Properties:
         Inertia: false
         Mass: false
-      Name: ugv1 모델
+      Name: ugv1 model
       TF Prefix: ugv1
       Update Interval: 0
       Value: true
@@ -149,7 +149,7 @@ Visualization Manager:
       Mass Properties:
         Inertia: false
         Mass: false
-      Name: ugv2 모델
+      Name: ugv2 model
       TF Prefix: ugv2
       Update Interval: 0
       Value: true
@@ -176,7 +176,7 @@ Visualization Manager:
       Mass Properties:
         Inertia: false
         Mass: false
-      Name: spot1 모델
+      Name: spot1 model
       TF Prefix: spot1
       Update Interval: 0
       Value: true
@@ -203,7 +203,7 @@ Visualization Manager:
       Mass Properties:
         Inertia: false
         Mass: false
-      Name: drone1 모델
+      Name: drone1 model
       TF Prefix: drone1
       Update Interval: 0
       Value: true
@@ -219,7 +219,7 @@ Visualization Manager:
       Color Transformer: FlatColor
       Decay Time: 0
       Enabled: false
-      Name: ugv1 스캔
+      Name: ugv1 scan
       Position Transformer: XYZ
       Size (Pixels): 3
       Size (m): 0.05
@@ -241,7 +241,7 @@ Visualization Manager:
       Color Transformer: FlatColor
       Decay Time: 0
       Enabled: false
-      Name: ugv2 스캔
+      Name: ugv2 scan
       Position Transformer: XYZ
       Size (Pixels): 3
       Size (m): 0.05
@@ -312,7 +312,7 @@ Visualization Manager:
         Focal Shape Fixed Size: true
         Focal Shape Size: 0.05000000074505806
         Invert Z Axis: false
-        Name: 비스듬히 보기
+        Name: Angled View
         Near Clip Distance: 0.009999999776482582
         Pitch: 1.0
         Target Frame: <Fixed Frame>
