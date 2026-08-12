@@ -29,23 +29,30 @@
 ## 전체 구조 한눈에 보기
 
 ```
-[각 로봇 컨테이너]                          [마스터 관제 컨테이너]
+[fleet 컨테이너 — 로봇마다 프로세스 한 벌]    [마스터 관제 컨테이너]
 
-ugv1_brain_windows                          rviz_master_windows
-  ├─ webots_ros2_driver                       │
-  │    └─ odom→base_link (GPS 절대좌표)       ├─ map_merger
-  ├─ slam_toolbox                             │    ├─ 로봇 발견 (3경로)
-  │    └─ /ugv1/map  ────────────────────────→│    ├─ world→{ns}/map static TF
-  │       ugv1/map→ugv1/odom                  │    └─ /map_merged  ──┐
-  ├─ robot_state_publisher                    │                      │
-  │    └─ /ugv1/robot_description ───────────→├─ joint_state_filler  │
-  ├─ nav2                                     │    └─ 누락 관절 0으로 채움
-  └─ robot_registrar                          │                      │
-       └─ /robot_registry ───────────────────→├─ robot_marker_publisher
-          (1Hz 하트비트)                       │    └─ /robot_markers ─┤
+fleet_spawner_windows                       rviz_master_windows
+  ├─ spawn_supervisor (소환기)                │
+  │                                           │
+  └─ ugv1 의 뇌                               │
+      ├─ webots_ros2_driver                   ├─ map_merger
+      │    └─ odom→base_link (GPS 절대좌표)   │    ├─ 로봇 발견 (3경로)
+      ├─ slam_toolbox                         │    ├─ world→{ns}/map static TF
+      │    └─ /ugv1/map  ───────────────────→ │    └─ /map_merged  ──┐
+      │       ugv1/map→ugv1/odom              │                      │
+      ├─ robot_state_publisher                │                      │
+      │    └─ /ugv1/robot_description ─────── →├─ joint_state_filler  │
+      ├─ nav2                                 │    └─ 누락 관절 0으로 채움
+      └─ robot_registrar                      │                      │
+           └─ /robot_registry ──────────────→ ├─ robot_marker_publisher
+              (1Hz 하트비트)                   │    └─ /robot_markers ─┤
                                               │                      │
-ugv2 / spot1 / drone1 도 동일 구조             └─ rviz2 ←─────────────┘
+  ugv2 / spot1 / drone1 의 뇌도 동일 구조       └─ rviz2 ←─────────────┘
 ```
+
+> 예전에는 로봇 1대 = 컨테이너 1개였다. 지금은 `fleet` 컨테이너 하나가 편대 전체의
+> 뇌를 프로세스 단위로 띄운다 — 몸과 뇌는 1:1이어야 하지만 뇌와 컨테이너는 그럴
+> 이유가 없기 때문이다. 마스터 입장에서 달라지는 것은 없다.
 
 세 노드 전부 **마스터에서 돌고, 로봇을 스스로 찾아낸다.** 로봇이 늘어나도
 마스터 설정을 고치거나 재시작할 필요가 없다는 것이 이 구조의 핵심 목표다.
@@ -430,61 +437,58 @@ ros2 launch webots_map_merge master.launch.py use_rviz:=false
 
 ### 새 로봇 추가 절차
 
-`ugv3`을 추가한다고 하면:
+**로봇은 이제 편대 매니페스트에서 온다.** `my_world.wbt`를 편집하거나 compose에 서비스를
+추가할 필요가 없다 (2026-08-13, 로봇 소환 기능 완료).
 
-1. **Webots**: `my_world.wbt`에서 SummitXlSteel 복사 → name을 `ugv3`으로 변경
-   ([Readme 4절](Readme.md#4-로봇-추가-방법-향후-자동화-예정))
-2. **docker-compose.yml**에 서비스 추가 — `ugv1` 블록을 복사해서 이름만 바꾸면 끝
-
-```yaml
-  ugv3:
-    <<: *ros-common
-    container_name: ugv3_brain_windows
-    environment:
-      - DISPLAY=${DISPLAY:-host.docker.internal:0}
-      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-      - ROS_LOCALHOST_ONLY=0
-      - ROS_DOMAIN_ID=30
-      - ROBOT_ID=ugv3
-      - ROBOT_INIT_X=-2.0
-      - ROBOT_INIT_Y=4.5
-      - ROBOT_INIT_YAW=1.5708
-    command: >
-      bash -c "source /ros2_ws/install/setup.bash &&
-               ros2 launch webots_python single_ugv.launch.py"
-    depends_on:
-      - master
-```
-
-3. `docker compose up -d ugv3`
-
-**마스터는 건드리지 않는다.** 몇 초 안에 `[등록] 새 로봇 합류: ugv3`이 찍히고
-병합 맵이 넓어지며 RViz에 마커가 뜬다. 재시작도 필요 없다
-([9-3절](#9-3-동적-합류이탈-검증)에서 실측).
-
-> 🚨 새 로봇을 월드에 추가했으면 **그 컨테이너를 반드시 띄워야 한다.**
-> `<extern>` 컨트롤러가 하나라도 안 붙으면 시뮬레이션 전체가 멈춘다
-> → [10장 ②](#-로봇-컨테이너를-전부-띄워야-시뮬이-돈다)
-
-> `ROBOT_INIT_*`은 현재 기본 설정에서 **쓰이지 않는다.** 실제 로봇 전환을 위해
-> 기록해두는 값이므로 채워두면 좋지만, 없어도 병합은 된다.
-
-### 런타임 소환(`webots_robot_spawner`)과의 관계 — 작업 중
-
-위 절차는 **컨테이너를 미리 정의해두는 방식**이다. 이와 별개로 실행 중인 Webots에
-로봇을 바로 추가하는 소환기(`fleet` 서비스)가 개발 중이다.
+한 대만 즉석에서 띄우려면 — 시뮬레이션을 멈추지 않고, 재시작 없이:
 
 ```bash
-ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'drone', random: true}"
+# 맵의 빈 공간에 알아서 배치
+ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'ugv', random: true}"
+
+# 원하는 자리에
+ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'ugv', x: -2.0, y: 4.5, yaw: 1.5708}"
 ```
 
-**맵 병합 쪽은 이걸 위해 고칠 것이 없다.** 소환기가 로봇의 뇌를 띄울 때
-`ROBOT_ID` / `ROBOT_INIT_*` 환경 변수를 넣어 주므로 기존 런치 경로를 그대로 타고,
-그러면 `robot_registrar`가 돌아 [5장](#5-로봇을-동적으로-받는-구조)의 ① 경로로 합류한다.
-등록 노드가 없더라도 ③ 자동 탐색과 TF 기반 마커가 받아준다.
+이름(`ugv3`)은 씬 트리를 보고 자동으로 채번된다. 종류는 `ugv` / `spot` / `drone`.
 
-즉 **"미리 정의한 컨테이너"든 "런타임 소환"이든 마스터 입장에서는 똑같이 보인다.**
+편대 구성을 바꾸려면 매니페스트를 고르거나 새로 쓴다
+([src/webots_robot_spawner/config/fleet/](src/webots_robot_spawner/config/fleet/)):
+
+```yaml
+fleet:
+  - {type: ugv,   id: ugv1, x: -6.159, y: 1.263, yaw: -2.910}
+  - {type: ugv,   count: 3, random: true}      # 3대를 알아서 배치
+  - {type: drone, count: 2, random: true}
+spawn_area: [-9.0, -6.0, 9.0, 7.0]             # random 배치 영역
+```
+
+```bash
+# fleet 컨테이너가 기동하면서 이 매니페스트대로 소환한다
+ros2 launch webots_robot_spawner spawner.launch.py fleet:=random_squad.yaml
+```
+
+**마스터는 건드리지 않는다.** 몇 초 안에 `[등록] 새 로봇 합류: ugv3`이 찍히고
+병합 맵이 넓어지며 RViz에 마커가 뜬다 ([9-3절](#9-3-동적-합류이탈-검증)에서 실측).
+
+> `ROBOT_INIT_*`은 현재 기본 설정에서 **쓰이지 않는다.** 실제 로봇 전환을 위해
+> 기록해두는 값이며, 소환기가 자동으로 채워 준다.
+
+### 맵 병합 쪽은 소환을 위해 고친 것이 없다
+
+소환기가 로봇의 뇌를 띄울 때 `ROBOT_ID` / `ROBOT_INIT_*` 환경 변수를 넣어 주므로
+기존 런치 경로를 그대로 타고, 그러면 `robot_registrar`가 돌아
+[5장](#5-로봇을-동적으로-받는-구조)의 ① 경로로 합류한다. 등록 노드가 없더라도
+③ 자동 탐색과 TF 기반 마커가 받아준다.
+
+즉 **어떻게 태어난 로봇이든 마스터 입장에서는 똑같이 보인다.**
 이게 발견 경로를 토픽·TF 기반으로 잡은 이유이기도 하다.
+
+딱 한 곳만 고쳤다 — **로봇이 전부 사라졌을 때 빈 맵을 한 번 발행한다.**
+발행 QoS가 `TRANSIENT_LOCAL`이라 그냥 발행을 멈추면 마지막 맵이 래치된 채 영원히
+남는데, 월드를 비우고 편대를 처음부터 올릴 때 이전 세션 맵에 찍힌 "옛 로봇의 몸"이
+장애물로 남아 **원래 스폰 좌표 4곳이 전부 거절되는 일이 실제로 있었다.**
+구독자는 `width == 0`을 "맵 없음"으로 다루면 된다.
 
 ### yaw 값 구하기 (`odom_is_world_absolute: false`일 때만 필요)
 
@@ -607,12 +611,10 @@ ros2 topic echo /ugv1/map --qos-durability transient_local --qos-reliability rel
 **2순위 — `/clock`이 안 돈다.** 병합 노드는 시뮬 시간으로 동작하므로 Webots가 멈춰 있으면
 병합도 멈춘다(의도된 동작). `ros2 topic hz /clock`으로 먼저 확인할 것.
 
-### ② 로봇 컨테이너를 전부 띄워야 시뮬이 돈다
+### ② 접속을 기다리는 extern 컨트롤러가 있으면 시뮬이 멈춘다
 
-`my_world.wbt`의 로봇 4대가 모두 `controller "<extern>"`인데,
 Webots는 **동기화 모드 extern 컨트롤러가 전부 접속할 때까지 스텝을 밟지 않는다.**
-
-`master + ugv1 + ugv2`만 띄웠을 때 실제로 관측된 증상:
+실제로 관측된 증상:
 
 - 센서 토픽은 다 보임 (드라이버는 접속됨)
 - `/clock` 0 Hz, `/ugv1/scan` 0 Hz
@@ -620,10 +622,38 @@ Webots는 **동기화 모드 extern 컨트롤러가 전부 접속할 때까지 �
 - Nav2가 `Invalid frame ID "ugv1/map"` 무한 반복
 
 증상만 보면 맵 병합이 고장 난 것 같지만 원인은 전혀 다른 곳이다.
-**월드에 있는 로봇 수만큼 컨테이너를 다 띄우거나**, 안 쓸 로봇은 월드에서 뺀다.
+
+지금은 월드에 로봇이 하나도 없어서(전부 소환으로 들어온다) 이 문제가 거의 사라졌다.
+소환된 로봇은 **`synchronization FALSE`로 주입**되어 Webots가 기다리지 않기 때문이다.
+다만 두 경우에 여전히 나타난다:
+
+- **월드를 재로드했을 때.** 로봇들의 `driver` 프로세스가 죽는데 `ros2 launch`가
+  되살리지 않는다. 컨테이너는 살아 있어서 더 헷갈린다.
+  → `docker compose restart` 로 뇌를 다시 띄운다.
+- **드론이 붙은 뒤.** 드론은 자세 루프가 매 물리 스텝 돌아야 추락하지 않으므로,
+  소환기가 뇌 접속을 확인한 뒤 그 로봇만 `synchronization`을 TRUE로 되돌린다.
+  그래서 드론의 뇌가 죽으면 시뮬이 멈춘다 (정적으로 놓였던 예전 drone1과 같은 성질).
 
 > 드론 문서 5장 ⑥과 같은 현상이다. 그때는 `/drone1/gps`도 같이 멈춘 것이 단서였고,
 > 여기서는 `/clock` 자체가 0 Hz인 것이 단서였다.
+
+### ②-2 `ros2 topic hz`가 거짓말을 할 때
+
+로봇이 늘어 노드가 100개를 넘으면 **있는 토픽도 "does not appear to be published yet"으로
+나온다.** CLI가 매번 새 참여자를 만들어 discovery를 처음부터 하기 때문이고, 토픽이
+없는 것이 아니다. 실제로 이걸 근거로 "드라이버가 죽었다"고 오진한 적이 있다.
+
+의심되면 참여자를 하나만 만들어 충분히 기다리는 쪽으로 확인한다:
+
+```python
+# rclpy 로 직접 구독해 25초간 수신량을 센다 (ros2 topic hz 보다 훨씬 안정적)
+node.create_subscription(Odometry, '/drone1/odom', cb, 10)
+```
+
+그리고 `ipc: host`를 쓰지 말 것. 컨테이너들이 호스트 `/dev/shm`을 공유하면
+FastDDS 세그먼트가 재생성마다 쌓여, 700개를 넘기면
+`fastrtps_portNNNNN: open_and_lock_file failed`로 **CLI가 아예 안 뜬다.**
+`shm_size`로 컨테이너별 용량만 키우면 된다(compose 3벌 모두 이 방식으로 통일).
 
 ### ③ 좌표가 정확히 두 배로 어긋남
 

@@ -5,7 +5,7 @@
 - [1. Webots 설치](#1-webots-설치)
 - [2. 설치 및 구성 (Installation)](#2-설치-및-구성-installation)
 - [3. 시뮬레이션 실행 방법 (Usage)](#3-시뮬레이션-실행-방법-usage)
-- [4. 로봇 추가 방법 (향후 자동화 예정)](#4-로봇-추가-방법-향후-자동화-예정)
+- [4. 로봇 추가 방법](#4-로봇-추가-방법)
 - [5. 도커 컨테이너 화면(GUI) 띄우기 — OS별 사전 준비](#5-도커-컨테이너-화면gui-띄우기--os별-사전-준비)
   - [5-1. Ubuntu (우분투 / 리눅스)](#5-1-ubuntu-우분투--리눅스--신규-지원-테스트-완료)
   - [5-2. Windows (윈도우)](#5-2-windows-윈도우)
@@ -32,6 +32,11 @@
   - [11-3. 기체 구성 (Mavic 2 Pro 개조)](#11-3-기체-구성-mavic-2-pro-개조)
   - [11-4. 해결된 이슈 (트러블슈팅 기록)](#11-4-해결된-이슈-트러블슈팅-기록)
   - [11-5. 알려진 한계 / 다음 작업](#11-5-알려진-한계--다음-작업)
+- [12. 로봇 소환 (Runtime Spawn)](#12-로봇-소환-runtime-spawn)
+  - [12-1. 소환하기](#12-1-소환하기)
+  - [12-2. 편대 매니페스트](#12-2-편대-매니페스트)
+  - [12-3. 구조 (몸 / 뇌 / 컨테이너)](#12-3-구조-몸--뇌--컨테이너)
+  - [12-4. 주의사항 / 트러블슈팅](#12-4-주의사항--트러블슈팅)
 - [향후 계획](#향후-계획)
 - [참고 문서 (References)](#참고-문서-references)
 
@@ -68,9 +73,16 @@ git submodule update --init --recursive
 3. `multi_webots/src/Webots-SummitXL/workspace/simulator/worlds` 디렉토리 내의 `worlds` 폴더에 있는 `my_world.wbt` 월드 파일(`.wbt`) 선택해서 열기
 4. 상단의 **Play** 버튼(또는 `Step` 버튼)을 눌러 시뮬레이션 시작 후 로봇들의 동작 확인
 
-## 4. 로봇 추가 방법 (향후 자동화 예정)
-1. `my_world.wbt` 월드 파일에서 SummitXlSteel을 복사
-2. SummitXlSteel 클릭하여 하위 트리에서 name 변경 (ROS2와 연동할 때 알아서 네임스페이스 생성해줌)
+## 4. 로봇 추가 방법
+**월드 파일을 편집하지 않는다.** 실행 중인 Webots에 서비스 호출로 소환한다.
+
+```bash
+ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'ugv', random: true}"
+```
+
+`my_world.wbt`에는 로봇이 하나도 없다 — 환경(아레나·벽·가구)과 소환 전담 노드
+(`spawn_supervisor`)만 있다. 편대는 yaml로 정의한다.
+자세한 내용은 [12. 로봇 소환](#12-로봇-소환-runtime-spawn) 참고.
 
 ---
 
@@ -165,24 +177,23 @@ python3 scripts/webots2kitti.py
 
 ### 6-2. 공통 명령어 (모든 OS 동일)
 
-**로봇 추가**: `docker-configs/<OS>/docker-compose.yml`에 아래처럼 서비스를 하나 더 추가하면 됨
-```yaml
-  # 4. UGV3 독립 컨테이너 (예시)
-  [compose 이름]:
-    <<: *ros-common
-    container_name: [container 이름]
-    environment:
-      - DISPLAY=${DISPLAY:-:0}
-      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-      - ROS_LOCALHOST_ONLY=0
-      - ROS_DOMAIN_ID=30
-      - ROBOT_ID=[Webots에서 설정한 이름]
-    command: >
-      bash -c "source /ros2_ws/install/setup.bash &&
-               ros2 launch webots_python single_ugv.launch.py"
-    depends_on:
-      - master
+**로봇 추가**: 서비스 호출 한 번. Webots를 멈추거나 재시작하지 않고, 월드 파일이나
+compose를 고치지 않는다. 종류는 `ugv` / `spot` / `drone`.
+```bash
+# 맵의 빈 공간에 알아서 배치 (이름은 ugv3, ugv4 ... 로 자동 채번)
+ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'ugv', random: true}"
+
+# 원하는 자리에
+ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'drone', x: 3.0, y: -2.0, yaw: 1.57}"
 ```
+
+편대 전체를 바꾸려면 매니페스트를 고른다
+([src/webots_robot_spawner/config/fleet/](src/webots_robot_spawner/config/fleet/)):
+`default.yaml`(기본 4대) / `random_squad.yaml`(UGV3+Spot1+드론2 무작위) / `ugv_only.yaml`.
+compose의 `fleet` 서비스 command에서 `fleet:=` 를 바꾸면 된다.
+
+소환된 로봇의 로그는 `fleet` 컨테이너 안 `/tmp/spawned_robots/{robot_id}.log`에 로봇별로
+분리돼 쌓인다. 자세한 내용은 [로봇 소환 문서](#12-로봇-소환-runtime-spawn) 참고.
 
 **목표점을 주면 자율주행 시작** (OS 상관없이 동일한 명령어; 컨테이너 안에서 실행하거나, 호스트 ROS 2 환경변수를 맞췄다면 호스트에서 바로 실행 가능):
 ```bash
@@ -324,10 +335,15 @@ Boston Dynamics Spot을 [seo2730/webots_ros2_spot](https://github.com/seo2730/we
   - 🚨 **Webots 씬트리에서 "Spot"을 Add Node로 다시 검색해서 추가하지 말 것.** Webots 기본 내장(스톡) proto가 잡혀서 위 설정이 통째로 날아감. 텍스트 에디터로 `.wbt` 파일을 직접 고치고 `Ctrl+Shift+R`로 리로드하는 방식으로만 수정.
 
 ### 10-2. 실행
-`docker-compose.yml`에 `spot1` 서비스가 이미 추가되어 있어서, [6. 실행 명령어](#6-실행-명령어-docker-compose)의 `up --build -d`로 다른 로봇들과 같이 뜸. Spot만 따로 올리거나 재시작하려면:
+기본 편대([`config/fleet/default.yaml`](src/webots_robot_spawner/config/fleet/default.yaml))에
+`spot1`이 들어 있어서 [6. 실행 명령어](#6-실행-명령어-docker-compose)의 `up --build -d`로
+다른 로봇들과 같이 소환됨. Spot만 한 대 더 띄우려면:
 ```bash
-docker compose -f docker-configs/windows/docker-compose.yml up --build -d spot1
-docker logs -f spot1_brain_windows
+ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'spot', random: true}"
+```
+로그는 `fleet` 컨테이너 안에 로봇별로 쌓임 (예전처럼 로봇마다 컨테이너가 있지 않음):
+```bash
+docker exec fleet_spawner_windows tail -f /tmp/spawned_robots/spot1.log
 ```
 런치 파일은 `ros2 launch webots_spot single_spot_launch.py` (namespace는 `ROBOT_ID` 환경변수, 기본값 `spot1`).
 
@@ -440,7 +456,7 @@ ros2 topic pub /drone1/cmd_vel geometry_msgs/msg/Twist "{}"
 **키보드 조종**: UGV의 `simulator keyboard`에 대응하는 드론용 텔레옵이 있다. 고도(`R`/`F`) 축이 추가됐고, 좌우가 조향이 아니라 평행이동인 점이 UGV와 다르다.
 
 ```bash
-docker exec -it drone1_brain_windows bash -c \
+docker exec -it fleet_spawner_windows bash -c \
   "source /ros2_ws/install/setup.bash && \
    ros2 run simulator drone_teleop --ros-args -r __ns:=/drone1"
 ```
@@ -490,10 +506,116 @@ docker exec -it drone1_brain_windows bash -c \
 
 > 참고: 초기에는 Webots 내장 C 컨트롤러(`controllers/mavic2pro_medium/`)로 키보드 조종을 했으나, OS별 컴파일이 필요하고 ROS 2 미션 스택에 붙일 수 없어 폐기했다. 11-4의 물리 이슈들은 그 컨트롤러로 규명한 것이며 결론은 그대로 유효하다. 필요하면 `git log -- workspace/simulator/controllers/`에서 복원할 수 있다.
 
+## 12. 로봇 소환 (Runtime Spawn)
+
+실행 중인 Webots에 로봇을 추가하는 기능. 담당 패키지:
+[src/webots_robot_spawner/](src/webots_robot_spawner/) + [src/webots_spawner_msgs/](src/webots_spawner_msgs/)
+
+**`my_world.wbt`에는 로봇이 없다.** 환경(아레나·벽 6개·가구 40개)과 소환 전담 노드
+`spawn_supervisor` 하나만 있고, 로봇은 전부 소환으로 들어온다. 예전에는 로봇 4대가
+월드 파일에 박혀 있어서 한 대 늘릴 때마다 월드 편집 + compose 서비스 추가 + Webots
+재시작이 필요했다.
+
+### 12-1. 소환하기
+
+```bash
+# 맵(/map_merged)의 빈 공간에 알아서 배치. 이름은 자동 채번(ugv3, ugv4 ...)
+ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'ugv', random: true}"
+
+# 원하는 자리에
+ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'drone', x: 3.0, y: -2.0, yaw: 1.57}"
+
+# 이름을 직접 정하고, 빈 공간 검사에 실패해도 강행
+ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'spot', robot_id: 'scout1', x: 0.0, y: 5.0, force: true}"
+```
+
+| 필드 | 뜻 |
+|---|---|
+| `type` | `ugv` / `spot` / `drone` |
+| `robot_id` | 비우면 씬 트리를 보고 자동 채번 |
+| `random` | true면 x/y/yaw 무시하고 맵의 빈 자리를 고름 |
+| `min_clearance` | 주변에 요구할 여유 반경(m). 0이면 종류별 기본값 |
+| `force` | 빈 공간 검사 실패에도 그 자리에 놓음 |
+
+응답에 실제 부여된 이름과 좌표, 실패 시 사유가 담긴다.
+
+### 12-2. 편대 매니페스트
+
+편대는 yaml로 정의한다 ([config/fleet/](src/webots_robot_spawner/config/fleet/)):
+
+| 파일 | 내용 |
+|---|---|
+| `default.yaml` | ugv1 / ugv2 / spot1 / drone1 — 예전 월드와 같은 좌표 |
+| `random_squad.yaml` | UGV 3 + Spot 1 + 드론 2, 무작위 배치 |
+| `ugv_only.yaml` | UGV 2대만 (맵 작업용 경량 편대) |
+
+```yaml
+fleet:
+  - {type: ugv,   id: ugv1, x: -6.159, y: 1.263, yaw: -2.910}
+  - {type: ugv,   count: 3, random: true}       # 3대를 알아서
+  - {type: drone, count: 2, random: true, clearance: 1.0}
+spawn_area: [-9.0, -6.0, 9.0, 7.0]              # random 배치 영역
+```
+
+`fleet` 컨테이너가 기동하면서 매니페스트대로 소환한다. 바꾸려면 compose의 `fleet`
+서비스 command에서 `fleet:=` 값을 바꾼다 (`fleet:=''` 면 자동 소환 없이 서비스만 받음).
+
+> `spawn_area`는 **항상** 지켜진다. 맵이 있으면 그 영역 안에서 장애물까지 피하고,
+> 월드가 비어 있는 냉시동(SLAM 맵이 존재할 수 없음)에서는 로봇 간 간격만 보고 고른다.
+
+### 12-3. 구조 (몸 / 뇌 / 컨테이너)
+
+```
+[Webots — 호스트]                    [fleet 컨테이너]
+
+spawn_supervisor (유령 로봇)  ←TCP→   spawn_supervisor 노드
+  supervisor TRUE                       ├─ /spawn_robot 서비스
+  synchronization FALSE                 ├─ /map_merged 로 빈 자리 찾기
+                                        └─ 소환할 때마다:
+ugv1 (소환된 몸)              ←TCP→        ros2 launch ... (자식 프로세스 = 뇌)
+drone1 (소환된 몸)            ←TCP→        driver + SLAM + Nav2 + registrar
+```
+
+- **몸과 뇌는 1:1**이어야 하지만 **뇌와 컨테이너는 그럴 이유가 없다.** 그래서 `fleet`
+  컨테이너 하나가 편대 전체의 뇌를 프로세스 단위로 띄운다. compose 서비스는
+  `master` + `fleet` 둘뿐이다.
+- 로그는 로봇별로 분리된다: `/tmp/spawned_robots/{robot_id}.log` (fleet 컨테이너 안)
+- 맵 병합·RViz 표시는 손댈 것이 없다. 소환된 로봇도 `robot_registrar`로 등록해서
+  마스터 입장에선 구분되지 않는다 ([MAP_MERGE.md](MAP_MERGE.md) 참고)
+- Docker 소켓을 쓰는 방식은 **일부러 만들지 않았다.** 소켓 경로가 플랫폼마다 달라
+  (Linux 유닉스 소켓 / Windows 네임드 파이프 / Mac Desktop VM) 크로스 플랫폼 전제가 깨진다.
+
+### 12-4. 주의사항 / 트러블슈팅
+
+**PROTO는 `IMPORTABLE EXTERNPROTO`로 선언해야 한다.** 일반 `EXTERNPROTO`로는 런타임
+주입이 실패한다:
+```
+ERROR: In order to import the PROTO 'X', first it must be declared in the IMPORTABLE EXTERNPROTO list.
+```
+
+**소환된 로봇은 `synchronization FALSE`로 주입된다.** TRUE면 Webots가 뇌 접속까지
+시뮬레이션 전체를 멈추는데, 소환기 자신도 같은 시뮬에서 스텝을 밟으므로 같이 멈춰
+교착에 빠진다. 단 **드론만** 뇌 접속 확인 후 TRUE로 되돌린다 — 자세 루프가 매 물리
+스텝 돌지 않으면 뒤집혀 추락한다 ([drone_setup.md](drone_setup.md) 참고). 그래서
+드론의 뇌가 죽으면 시뮬이 멈춘다.
+
+**월드를 재로드하면 뇌들이 죽는다.** `driver` 프로세스가 종료되는데 `ros2 launch`가
+되살리지 않는다. `docker compose restart` 로 다시 띄운다. `fleet` 컨테이너는
+`restart: unless-stopped`라 스스로 돌아오고, 몸만 남은 로봇은 **버리고 새로 소환**한다
+(뇌만 다시 붙이면 장치가 disabled 상태로 남아 센서가 죽는다).
+
+**despawn은 없다.** 스폰 실패 시 롤백만 한다 — 뇌가 유예 시간 안에 죽으면 몸을 씬
+트리에서 되돌려 조종 불가능한 유령 로봇이 쌓이지 않게 한다.
+
+**`ros2 topic hz`를 믿지 말 것.** 로봇이 늘어 노드가 100개를 넘으면 있는 토픽도
+"does not appear to be published yet"으로 나온다(CLI가 매번 새 참여자로 discovery를
+처음부터 함). rclpy로 직접 구독해 확인한다.
+
 ## 향후 계획
 - Gemini api 연동
 - Drone 추가 → 기체 구성·비행 검증 완료, ROS 2 연동 남음 ([11](#11-drone-중형급-쿼드콥터) 참고)
-- 로봇 생성 자동화
+- ~~로봇 생성 자동화~~ → 완료 (서비스 호출로 UGV/Spot/드론 런타임 소환, 편대는 yaml. [12](#12-로봇-소환-runtime-spawn) 참고)
+- 여러 월드 지원 / 점유격자에서 월드 자동 생성 (검토 완료, 착수 전)
 - ~~다중 로봇 지도 병합~~ → 완료 (마스터 관제 컨테이너에서 `/map_merged` 발행, 로봇 자동 합류/이탈까지 확인. [맵 병합 구축 기록](MAP_MERGE.md) 참고)
 - ~~윈도우 환경도 bridge 네트워크로 전환 테스트~~ → 완료 ([8-2](#8-2-windows-네트워킹-참고사항-웹-개발자용) 참고)
 - ~~Spot 추가~~ → 완료 (다리 제어 + 뎁스카메라 SLAM 맵 생성까지 확인, [10-6](#10-6-해결된-이슈-트러블슈팅-기록) 참고)

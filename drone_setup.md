@@ -13,7 +13,7 @@ DJI Mavic 2 Pro를 중형급(6.35kg)으로 개조해 월드에 넣고, UGV·Spot
 ```
 [Webots]                                   [Docker / ROS 2]
 
-DEF DRONE1 Mavic2ProMedium {               drone1_brain_windows
+Mavic2ProMedium {   (런타임 소환)            fleet_spawner_windows 안의
   controller "<extern>"  ←─── TCP 1234 ───→  webots_ros2_driver
 }                                                  │
   │                                                └─ drone_driver.py (플러그인)
