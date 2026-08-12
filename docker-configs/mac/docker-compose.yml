@@ -120,9 +120,14 @@ services:
   #    이 컨테이너 안에서 자식 프로세스로 띄웁니다. 위 1~5번처럼 로봇마다
   #    컨테이너를 미리 정의해 둘 필요가 없습니다.
   #      ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'drone', random: true}"
+  # 🔁 restart 가 필요한 이유: Webots 에서 월드를 재로드(File > Reload World)하면
+  #    extern 컨트롤러 연결이 끊기고 supervisor.step() 이 -1 을 돌려준다. 소환기는
+  #    거기서 정상 종료하는데(월드가 사라졌으니 맞다) 그러면 컨테이너까지 끝나버려서
+  #    새 월드에 다시 붙지 못한다. 실측으로 확인했다. 재시작으로 다시 붙게 한다.
   fleet:
     <<: *mac-common
     container_name: fleet_spawner_mac
+    restart: unless-stopped
     environment:
       - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
       - ROS_LOCALHOST_ONLY=0

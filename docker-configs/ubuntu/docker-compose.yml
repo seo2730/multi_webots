@@ -145,9 +145,14 @@ services:
   #    컨테이너를 미리 정의해 둘 필요가 없습니다.
   #      ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'drone', random: true}"
   # 🌟 host.docker.internal 별칭은 위 x-ros-common의 extra_hosts에서 그대로 상속받습니다.
+  # 🔁 restart 가 필요한 이유: Webots 에서 월드를 재로드(File > Reload World)하면
+  #    extern 컨트롤러 연결이 끊기고 supervisor.step() 이 -1 을 돌려준다. 소환기는
+  #    거기서 정상 종료하는데(월드가 사라졌으니 맞다) 그러면 컨테이너까지 끝나버려서
+  #    새 월드에 다시 붙지 못한다. 실측으로 확인했다. 재시작으로 다시 붙게 한다.
   fleet:
     <<: *ros-common
     container_name: fleet_spawner_ubuntu
+    restart: unless-stopped
     environment:
       - DISPLAY=${DISPLAY:-:0}
       - QT_X11_NO_MITSHM=1
