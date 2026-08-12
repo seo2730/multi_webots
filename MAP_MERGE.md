@@ -29,30 +29,34 @@
 ## 전체 구조 한눈에 보기
 
 ```
-[fleet 컨테이너 — 로봇마다 프로세스 한 벌]    [마스터 관제 컨테이너]
+[각 로봇 컨테이너]                          [마스터 관제 컨테이너]
 
-fleet_spawner_windows                       rviz_master_windows
-  ├─ spawn_supervisor (소환기)                │
-  │                                           │
-  └─ ugv1 의 뇌                               │
-      ├─ webots_ros2_driver                   ├─ map_merger
-      │    └─ odom→base_link (GPS 절대좌표)   │    ├─ 로봇 발견 (3경로)
-      ├─ slam_toolbox                         │    ├─ world→{ns}/map static TF
-      │    └─ /ugv1/map  ───────────────────→ │    └─ /map_merged  ──┐
-      │       ugv1/map→ugv1/odom              │                      │
-      ├─ robot_state_publisher                │                      │
-      │    └─ /ugv1/robot_description ─────── →├─ joint_state_filler  │
-      ├─ nav2                                 │    └─ 누락 관절 0으로 채움
-      └─ robot_registrar                      │                      │
-           └─ /robot_registry ──────────────→ ├─ robot_marker_publisher
-              (1Hz 하트비트)                   │    └─ /robot_markers ─┤
+ugv1_brain_windows                          rviz_master_windows
+  ├─ webots_ros2_driver                       │
+  │    └─ odom→base_link (GPS 절대좌표)       ├─ map_merger
+  ├─ slam_toolbox                             │    ├─ 로봇 발견 (3경로)
+  │    └─ /ugv1/map  ────────────────────────→│    ├─ world→{ns}/map static TF
+  │       ugv1/map→ugv1/odom                  │    └─ /map_merged  ──┐
+  ├─ robot_state_publisher                    │                      │
+  │    └─ /ugv1/robot_description ───────────→├─ joint_state_filler  │
+  ├─ nav2                                     │    └─ 누락 관절 0으로 채움
+  └─ robot_registrar                          │                      │
+       └─ /robot_registry ───────────────────→├─ robot_marker_publisher
+          (1Hz 하트비트)                       │    └─ /robot_markers ─┤
                                               │                      │
-  ugv2 / spot1 / drone1 의 뇌도 동일 구조       └─ rviz2 ←─────────────┘
+ugv2 / spot1 / drone1 도 동일 구조             └─ rviz2 ←─────────────┘
+
+[fleet 컨테이너]
+fleet_spawner_windows
+  └─ spawn_supervisor — 매니페스트대로 Webots 에 **몸**을 주입.
+                        매니페스트에 없는 런타임 소환은 뇌까지 띄운다.
 ```
 
-> 예전에는 로봇 1대 = 컨테이너 1개였다. 지금은 `fleet` 컨테이너 하나가 편대 전체의
-> 뇌를 프로세스 단위로 띄운다 — 몸과 뇌는 1:1이어야 하지만 뇌와 컨테이너는 그럴
-> 이유가 없기 때문이다. 마스터 입장에서 달라지는 것은 없다.
+> 로봇의 몸은 더 이상 `my_world.wbt`에 없다. `fleet` 컨테이너의 소환기가 편대
+> 매니페스트대로 주입하고, 제어·경로는 위 로봇별 컨테이너가 담당한다.
+> compose 의 로봇 서비스는 매니페스트에서 생성한다
+> (`scripts/gen_fleet_compose.py`). **마스터 입장에서 달라지는 것은 없다** —
+> 어떻게 태어난 로봇이든 `robot_registrar`로 등록하면 똑같이 보인다.
 
 세 노드 전부 **마스터에서 돌고, 로봇을 스스로 찾아낸다.** 로봇이 늘어나도
 마스터 설정을 고치거나 재시작할 필요가 없다는 것이 이 구조의 핵심 목표다.

@@ -341,10 +341,12 @@ Boston Dynamics Spot을 [seo2730/webots_ros2_spot](https://github.com/seo2730/we
 ```bash
 ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'spot', random: true}"
 ```
-로그는 `fleet` 컨테이너 안에 로봇별로 쌓임 (예전처럼 로봇마다 컨테이너가 있지 않음):
+매니페스트에 있는 로봇은 자기 컨테이너를 가지므로 로그도 거기서 본다:
 ```bash
-docker exec fleet_spawner_windows tail -f /tmp/spawned_robots/spot1.log
+docker logs -f spot1_brain_windows
 ```
+반면 위처럼 **런타임에 소환한** 로봇(spot2 등)은 `fleet` 컨테이너가 뇌를 띄우므로
+`docker exec fleet_spawner_windows tail -f /tmp/spawned_robots/spot2.log`.
 런치 파일은 `ros2 launch webots_spot single_spot_launch.py` (namespace는 `ROBOT_ID` 환경변수, 기본값 `spot1`).
 
 > 💡 `spot_driver.py`에 사족보행 관련 함수가 많아서 별도 문서로 정리해둠 → **[spot_driver.py 함수 설명서](spot_driver_functions.md)** (동작 모드 3종, 보행/자세/호버링/상태발행 함수별 역할)
@@ -456,7 +458,7 @@ ros2 topic pub /drone1/cmd_vel geometry_msgs/msg/Twist "{}"
 **키보드 조종**: UGV의 `simulator keyboard`에 대응하는 드론용 텔레옵이 있다. 고도(`R`/`F`) 축이 추가됐고, 좌우가 조향이 아니라 평행이동인 점이 UGV와 다르다.
 
 ```bash
-docker exec -it fleet_spawner_windows bash -c \
+docker exec -it drone1_brain_windows bash -c \
   "source /ros2_ws/install/setup.bash && \
    ros2 run simulator drone_teleop --ros-args -r __ns:=/drone1"
 ```
@@ -565,25 +567,80 @@ spawn_area: [-9.0, -6.0, 9.0, 7.0]              # random 배치 영역
 
 ### 12-3. 구조 (몸 / 뇌 / 컨테이너)
 
-```
-[Webots — 호스트]                    [fleet 컨테이너]
+세 층으로 나뉜다. **몸과 뇌는 1:1이어야 하지만, 뇌와 컨테이너는 그럴 이유가 없다** —
+이 구분이 구조의 핵심이다.
 
-spawn_supervisor (유령 로봇)  ←TCP→   spawn_supervisor 노드
-  supervisor TRUE                       ├─ /spawn_robot 서비스
-  synchronization FALSE                 ├─ /map_merged 로 빈 자리 찾기
-                                        └─ 소환할 때마다:
-ugv1 (소환된 몸)              ←TCP→        ros2 launch ... (자식 프로세스 = 뇌)
-drone1 (소환된 몸)            ←TCP→        driver + SLAM + Nav2 + registrar
+```
+[Webots — 호스트]                  [fleet 컨테이너]        [로봇별 컨테이너]
+
+spawn_supervisor (유령 로봇) ←TCP→  spawn_supervisor
+  supervisor TRUE                    ├─ /spawn_robot 서비스
+  synchronization FALSE              ├─ 매니페스트대로 몸 주입
+                                     └─ /map_merged 로 빈 자리 찾기
+ugv1   (몸)  ←────────────────────────────────────TCP────→ ugv1_brain_*
+spot1  (몸)  ←────────────────────────────────────TCP────→ spot1_brain_*    driver
+drone1 (몸)  ←────────────────────────────────────TCP────→ drone1_brain_*   + SLAM
+                                                                            + Nav2
+ugv3 (런타임 소환된 몸) ←TCP→ 이 뇌만 fleet 컨테이너가 띄운다               + registrar
 ```
 
-- **몸과 뇌는 1:1**이어야 하지만 **뇌와 컨테이너는 그럴 이유가 없다.** 그래서 `fleet`
-  컨테이너 하나가 편대 전체의 뇌를 프로세스 단위로 띄운다. compose 서비스는
-  `master` + `fleet` 둘뿐이다.
-- 로그는 로봇별로 분리된다: `/tmp/spawned_robots/{robot_id}.log` (fleet 컨테이너 안)
-- 맵 병합·RViz 표시는 손댈 것이 없다. 소환된 로봇도 `robot_registrar`로 등록해서
-  마스터 입장에선 구분되지 않는다 ([MAP_MERGE.md](MAP_MERGE.md) 참고)
+- **몸**은 fleet 컨테이너의 소환기가 매니페스트대로 Webots에 주입한다
+- **뇌(제어·경로)** 는 로봇별 컨테이너가 담당한다. 컨테이너 경계가 있어야
+  `cpuset`으로 코어를 고정하거나 `cpus`로 상한을 걸 수 있다
+- **매니페스트에 없는 런타임 소환**만 fleet 컨테이너가 뇌까지 띄운다.
+  이름과 자리가 런타임에 정해져 기다려 줄 컨테이너가 없기 때문이다.
+  그 로그는 `/tmp/spawned_robots/{robot_id}.log` (fleet 컨테이너 안)
+
+> ⚠️ 컨테이너를 나눠도 **CPU 총량이 늘지는 않는다.** compose에 `cpus`/`memory` 제한이
+> 없으면 컨테이너는 호스트 코어를 그냥 공유하고, OS는 컨테이너가 아니라 프로세스를
+> 스케줄한다. 컨테이너 경계가 주는 것은 **코어 고정·자원 상한·장애 격리·개별 재시작**이다.
+
+compose는 매니페스트에서 생성한다. 손으로 유지하면 매니페스트와 이중 관리가 된다:
+
+```bash
+docker run --rm -v "$PWD:/w" -w /w windows-master \
+  python3 src/webots_robot_spawner/scripts/gen_fleet_compose.py --fleet default.yaml
+```
+
+`# >>> FLEET GENERATED` 마커 사이만 갈아 끼우므로 `master`/`fleet` 서비스와 주석은
+그대로 남는다. `--check`를 붙이면 고치지 않고 최신인지만 확인한다(CI용).
+
+- 맵 병합·RViz 표시는 손댈 것이 없다. 어떻게 태어난 로봇이든 `robot_registrar`로
+  등록해서 마스터 입장에선 구분되지 않는다 ([MAP_MERGE.md](MAP_MERGE.md) 참고)
 - Docker 소켓을 쓰는 방식은 **일부러 만들지 않았다.** 소켓 경로가 플랫폼마다 달라
   (Linux 유닉스 소켓 / Windows 네임드 파이프 / Mac Desktop VM) 크로스 플랫폼 전제가 깨진다.
+
+### 12-3-1. 기동 순서 (왜 드론만 다른가)
+
+`compose up` 할 때 순서가 중요하다. 세 가지가 얽혀 있다.
+
+| 서비스 | 기다리는 것 | 이유 |
+|---|---|---|
+| ugv / spot | `fleet`의 **healthcheck** (`service_healthy`) | 소환기가 몸을 다 확정한 뒤 드라이버가 붙어야 한다 |
+| **drone** | `fleet`의 **기동만** (`service_started`) | 아래 교착 때문에 먼저 떠야 한다 |
+
+소환기는 몸을 다 확정하면 `/tmp/fleet_ready`를 만들고, fleet의 healthcheck가 그걸 본다.
+이게 없으면 **드라이버가 옛 몸에 붙은 직후 소환기가 그 몸을 잔여물로 지워서 드라이버가
+끊기고 종료한다**(실측: 접속 t=26s, 제거 t=38s).
+
+드론만 예외인 이유는 교착이다:
+
+```
+드론 몸은 비행을 위해 synchronization TRUE
+   → compose down 하면 그 몸만 월드에 남는다
+   → Webots 가 기다려 줄 컨트롤러가 없어 시뮬을 멈춘다
+   → 소환기의 step() 이 막혀 편대 처리를 못 한다
+   → /tmp/fleet_ready 가 안 생겨 healthcheck 실패
+   → 드론 컨테이너가 안 뜬다 → 처음으로 되돌아감
+```
+
+소환기가 스스로 풀 수 없다. 시작할 때 잔여 몸의 `synchronization`을 내려도
+**supervisor의 필드 쓰기는 스텝이 돌아야 반영되는데 그 스텝에서 막혀 있다**
+(두 번 연속 기동해도 같은 몸이 계속 TRUE로 보이는 것으로 확인). 이 고리를 끊을 수
+있는 것은 그 드라이버가 붙는 것뿐이라, 드론 컨테이너만 먼저 띄운다.
+
+대신 `fleet_start_delay`가 20초다. 먼저 뜬 드론이 `robot_registrar`까지 올라올 시간을
+줘야 살아있는 드론을 잔여물로 오판해 몸을 지우지 않는다.
 
 ### 12-4. 주의사항 / 트러블슈팅
 
@@ -601,8 +658,23 @@ ERROR: In order to import the PROTO 'X', first it must be declared in the IMPORT
 
 **월드를 재로드하면 뇌들이 죽는다.** `driver` 프로세스가 종료되는데 `ros2 launch`가
 되살리지 않는다. `docker compose restart` 로 다시 띄운다. `fleet` 컨테이너는
-`restart: unless-stopped`라 스스로 돌아오고, 몸만 남은 로봇은 **버리고 새로 소환**한다
-(뇌만 다시 붙이면 장치가 disabled 상태로 남아 센서가 죽는다).
+`restart: unless-stopped`라 스스로 돌아온다.
+
+**Webots를 켠 채 `compose down` 하면 로봇의 몸이 월드에 남는다.** 다시 올릴 때
+`stale_body_policy`(기본 `recreate`)가 처리한다:
+
+| 몸의 상태 | 처리 | 이유 |
+|---|---|---|
+| 뇌가 살아 있음 (`/robot_registry`에 보임) | **그대로 둔다** | 지우면 정상 동작 중인 드라이버가 끊기고 `ros2 launch`가 되살리지 않는다 |
+| 뇌가 없음 (잔여물) | **지우고 새로 소환** | 지난 세션 잔여물을 물려받지 않는다 |
+
+생사 판단에 `/robot_registry`를 쓰는 이유는 QoS가 `TRANSIENT_LOCAL`이라 **늦게 구독해도
+살아있는 registrar의 명함은 받고, 죽은 것의 명함은 안 오기** 때문이다. 그대로 두고
+싶으면 `stale_body_policy: adopt`.
+
+> 뇌만 다시 붙이는 방식(`attach`)은 폐기했다. 장치가 disabled 상태로 남아 센서가
+> 죽는다 — 실측: 뇌만 붙인 드론은 `wb_gps_get_values() called for a disabled device`가
+> 4726건, 같은 시점에 새로 소환한 드론은 0건이었다.
 
 **despawn은 없다.** 스폰 실패 시 롤백만 한다 — 뇌가 유예 시간 안에 죽으면 몸을 씬
 트리에서 되돌려 조종 불가능한 유령 로봇이 쌓이지 않게 한다.
