@@ -28,10 +28,22 @@ services:
       - ROS_DOMAIN_ID=30
       - LIBGL_ALWAYS_SOFTWARE=1 # VNC RViz2 튕김 방지
       - GALLIUM_DRIVER=llvmpipe
-    # 💡 [주의] Mac에서는 VNC 환경을 먼저 띄워야 하므로 자동 실행 대신 VNC를 켭니다.
-    # localhost:6080 에 접속 후 내부 터미널을 열어 직접 RViz2 명령어를 입력해 주세요!
-    # 명령어: source /ros2_ws/install/setup.bash && ros2 run rviz2 rviz2 -d /ros2_ws/src/webots_python/rviz/webots_rviz.rviz
-    command: /start_vnc.sh
+    # 💡 [주의] Mac에서는 VNC 환경을 먼저 띄워야 하므로 RViz2는 자동 실행하지 않습니다.
+    #
+    # 🗺️ 다만 맵 병합(map_merger / joint_state_filler / robot_marker_publisher)은
+    #    화면이 필요 없으므로 use_rviz:=false 로 백그라운드에서 먼저 띄웁니다.
+    #    이렇게 안 하면 사용자가 VNC에 접속하기 전까지 /map_merged 가 아예 안 나옵니다.
+    #    (`A && B & C` 는 `(A && B) &` 를 백그라운드로 돌리고 C 를 포그라운드로 둡니다)
+    #
+    # localhost:6080 에 접속 후 내부 터미널에서 RViz2만 띄우면 됩니다:
+    #   source /ros2_ws/install/setup.bash
+    #   ros2 run rviz2 rviz2 -d /ros2_ws/install/webots_map_merge/share/webots_map_merge/rviz/master_merged.rviz
+    #
+    # 자세한 내용: MAP_MERGE.md
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 launch webots_map_merge master.launch.py use_rviz:=false &
+               /start_vnc.sh"
     tty: true
     stdin_open: true
 
@@ -44,6 +56,10 @@ services:
       - ROS_LOCALHOST_ONLY=0
       - ROS_DOMAIN_ID=30
       - ROBOT_ID=ugv1
+      # 🗺️ 맵 병합용 월드 절대 초기 위치 (my_world.wbt 스폰 좌표)
+      - ROBOT_INIT_X=-6.159
+      - ROBOT_INIT_Y=1.263
+      - ROBOT_INIT_YAW=-2.910
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
                ros2 launch webots_python single_ugv.launch.py"
@@ -57,6 +73,10 @@ services:
       - ROS_LOCALHOST_ONLY=0
       - ROS_DOMAIN_ID=30
       - ROBOT_ID=ugv2
+      # 🗺️ 맵 병합용 월드 절대 초기 위치 (my_world.wbt 스폰 좌표)
+      - ROBOT_INIT_X=8.376
+      - ROBOT_INIT_Y=1.373
+      - ROBOT_INIT_YAW=-0.064
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
                ros2 launch webots_python single_ugv.launch.py"
@@ -70,6 +90,10 @@ services:
       - ROS_LOCALHOST_ONLY=0
       - ROS_DOMAIN_ID=30
       - ROBOT_ID=spot1
+      # 🗺️ 맵 병합용 월드 절대 초기 위치 (my_world.wbt 스폰 좌표)
+      - ROBOT_INIT_X=-0.84
+      - ROBOT_INIT_Y=-0.34
+      - ROBOT_INIT_YAW=0.0
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
                ros2 launch webots_spot single_spot_launch.py"
@@ -83,6 +107,10 @@ services:
       - ROS_LOCALHOST_ONLY=0
       - ROS_DOMAIN_ID=30
       - ROBOT_ID=drone1
+      # 🗺️ 드론은 SLAM이 없어 맵 병합엔 참여하지 않지만, 위치는 알려둡니다.
+      - ROBOT_INIT_X=-6.5
+      - ROBOT_INIT_Y=5.5
+      - ROBOT_INIT_YAW=0.0
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
                ros2 launch webots_python single_drone.launch.py"
