@@ -22,6 +22,7 @@ ROS 2 노드**다. 컨테이너에 Webots R2025a가 통째로 설치돼 있어(D
    바꾸지 말 것.
 """
 
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -29,12 +30,28 @@ from dataclasses import dataclass
 import numpy as np
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import String
 
 from webots_robot_spawner.brain_launcher import LocalProcessLauncher
 from webots_robot_spawner.fleet_loader import load_fleet
 from webots_robot_spawner.free_space_sampler import FreeSpaceSampler
 from webots_robot_spawner.robot_types import KNOWN_ROBOT_PROTOS, ROBOT_TYPES
 from webots_spawner_msgs.srv import SpawnRobot
+
+
+def registry_qos() -> QoSProfile:
+    """robot_registrar 가 /robot_registry 를 내보내는 QoS와 같은 프로파일.
+
+    TRANSIENT_LOCAL 이라 우리가 늦게 떠도 이미 보낸 명함을 받는다.
+    (webots_map_merge.map_merger.registry_qos 와 같은 값)
+    """
+    return QoSProfile(
+        depth=20,
+        history=HistoryPolicy.KEEP_LAST,
+        reliability=ReliabilityPolicy.RELIABLE,
+        durability=DurabilityPolicy.TRANSIENT_LOCAL,
+    )
 
 
 @dataclass
@@ -69,6 +86,14 @@ class SpawnSupervisor(Node):
         # 매니페스트 소환을 시작하기 전 기다리는 시간(초). Webots 접속 직후 바로
         # 밀어 넣으면 씬 트리가 아직 안정되지 않은 상태에서 삽입이 겹칠 수 있다.
         self.declare_parameter('fleet_start_delay', 3.0)
+        # 매니페스트 로봇의 뇌를 누가 띄우는가.
+        #   true  : 소환기가 이 컨테이너 안에서 자식 프로세스로 띄운다
+        #   false : **로봇별 컨테이너가 띄운다.** 소환기는 몸만 만들고 손을 뗀다
+        #           (scripts/gen_fleet_compose.py 가 만든 compose 를 쓸 때)
+        # 런타임 서비스 호출(/spawn_robot)은 이 값과 무관하게 늘 뇌까지 띄운다 —
+        # 매니페스트에 없는 로봇은 기다려 줄 컨테이너가 없기 때문이다.
+        self.declare_parameter('manifest_brains', True)
+        self.declare_parameter('registry_topic', '/robot_registry')
 
         self._separation = float(self.get_parameter('robot_separation').value)
         self._attempts = int(self.get_parameter('sample_attempts').value)
@@ -84,10 +109,21 @@ class SpawnSupervisor(Node):
             self, log_dir=self.get_parameter('log_dir').value)
 
         self._rng = np.random.default_rng()
+        self.manifest_brains = bool(self.get_parameter('manifest_brains').value)
+
         # robot_id -> (webots node, BrainHandle 또는 None, RobotType)
         # RobotType 을 같이 들고 있는 이유: 뇌 접속 확인 뒤에 그 로봇이 동기화를
         # 필요로 하는지(needs_sync) 알아야 하기 때문이다.
         self._spawned = {}
+
+        # 뇌를 외부 컨테이너가 띄우는 needs_sync 로봇들. 그 뇌가 떴는지 우리는 직접
+        # 알 수 없으니 /robot_registry 로 판단한다 — 로봇별 컨테이너의 robot_registrar
+        # 가 1Hz 로 자기 이름을 보내므로, 그 이름이 보이면 뇌가 살아 있다는 뜻이다.
+        # 그때 synchronization 을 TRUE 로 되돌린다(드론은 그래야 안 추락한다).
+        self._pending_sync = {}   # robot_id -> (webots node, RobotType)
+        self.create_subscription(
+            String, self.get_parameter('registry_topic').value,
+            self._on_registry, registry_qos())
 
         self._srv = self.create_service(SpawnRobot, 'spawn_robot', self._on_spawn)
 
@@ -157,7 +193,7 @@ class SpawnSupervisor(Node):
 
     def spawn_one(self, type_key, robot_id='', random_place=False,
                   x=0.0, y=0.0, yaw=0.0, min_clearance=0.0, force=False,
-                  bounds=None, strict_map=True) -> SpawnResult:
+                  bounds=None, strict_map=True, launch_brain=None) -> SpawnResult:
         """로봇 한 대를 소환한다. 서비스와 편대 매니페스트가 공유하는 유일한 경로.
 
         Args:
@@ -250,8 +286,12 @@ class SpawnSupervisor(Node):
             f'@ ({x:.3f}, {y:.3f}, {robot_type.spawn_z:.3f}), yaw {yaw:.3f}')
 
         # 뇌 띄우기 ----------------------------------------------------
+        # launch_brain=False 면 몸만 만들고 손을 뗀다. 로봇별 컨테이너가 뇌를 담당하는
+        # 구성에서 쓴다. 그 경우 needs_sync 로봇은 /robot_registry 로 뇌 등장을
+        # 기다렸다가 동기화를 되돌린다.
+        want_brain = self._auto_brain if launch_brain is None else bool(launch_brain)
         handle = None
-        if self._auto_brain:
+        if want_brain:
             try:
                 handle = self._launcher.launch(robot_id, robot_type, x, y, yaw)
             except Exception as exc:                      # noqa: BLE001
@@ -261,14 +301,19 @@ class SpawnSupervisor(Node):
                 self.get_logger().error(msg)
                 return SpawnResult(False, robot_id=robot_id, message=msg)
             self._arm_rollback(robot_id)
+        elif robot_type.needs_sync:
+            # 뇌를 외부가 띄운다. 그 뇌가 등록되면 동기화를 되돌린다.
+            self._pending_sync[robot_id] = (node, robot_type)
+            self.get_logger().info(
+                f'[{robot_id}] 몸만 만들었습니다. 외부 컨테이너의 뇌가 등록되면 '
+                '동기화를 TRUE 로 되돌립니다')
 
         self._spawned[robot_id] = (node, handle, robot_type)
 
         return SpawnResult(
             True, robot_id=robot_id, x=x, y=y, yaw=yaw,
             message=(f'{robot_id} 소환 완료 ({x:.2f}, {y:.2f}, yaw {yaw:.2f})'
-                     + ('' if self._auto_brain
-                        else ' — 뇌는 직접 띄우세요(auto_launch_brain=false)')))
+                     + ('' if want_brain else ' — 몸만 만들었습니다(뇌는 외부 담당)')))
 
     def reclaim(self, type_key, robot_id, **spawn_kwargs) -> SpawnResult:
         """뇌 없이 몸만 남은 로봇을 **버리고 새로 소환한다.**
@@ -409,6 +454,27 @@ class SpawnSupervisor(Node):
             self._spawned.pop(robot_id, None)
 
         box['timer'] = self.create_timer(self._grace, check)
+
+    def _on_registry(self, msg):
+        """로봇별 컨테이너의 뇌가 떴는지 /robot_registry 로 확인한다.
+
+        뇌를 우리가 띄우지 않는 경우(manifest_brains=false) 프로세스 핸들이 없어서
+        살아있는지 알 방법이 없다. 그런데 그 컨테이너 안의 robot_registrar 가 1Hz 로
+        자기 이름을 보내므로, 그 이름이 보이면 뇌가 붙었다는 뜻이다.
+        """
+        if not self._pending_sync:
+            return
+        try:
+            robot_id = json.loads(msg.data).get('robot_id', '')
+        except (ValueError, TypeError):
+            return
+        entry = self._pending_sync.pop(robot_id, None)
+        if entry is None:
+            return
+        node, robot_type = entry
+        self.get_logger().info(
+            f'[{robot_id}] 외부 컨테이너의 뇌가 등록됐습니다 — 동기화를 되돌립니다')
+        self._enable_sync_if_needed(robot_id, node, robot_type)
 
     def _enable_sync_if_needed(self, robot_id, node, robot_type):
         """뇌가 붙은 것을 확인한 뒤 Webots 노드의 synchronization 을 TRUE 로 되돌린다.

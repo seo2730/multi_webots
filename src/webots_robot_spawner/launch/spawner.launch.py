@@ -55,6 +55,11 @@ def generate_launch_description():
         'auto_launch_brain', default_value='true',
         description='소환 후 ROS 2 뇌(driver/SLAM/Nav2)를 자동으로 띄울지')
 
+    declare_manifest_brains = DeclareLaunchArgument(
+        'manifest_brains', default_value='true',
+        description=('매니페스트 로봇의 뇌를 소환기가 띄울지(true) 로봇별 컨테이너가 '
+                     '띄울지(false). gen_fleet_compose.py 로 생성한 compose 는 false.'))
+
     def make_node(context):
         return [Node(
             package='webots_robot_spawner',
@@ -63,6 +68,7 @@ def generate_launch_description():
             output='screen',
             parameters=[params_file, {
                 'auto_launch_brain': auto_launch_brain,
+                'manifest_brains': LaunchConfiguration('manifest_brains'),
                 'fleet_manifest': _resolve_fleet(context, pkg_dir),
             }],
             # 소환한 로봇의 뇌가 전역 /tf를 그대로 쓰도록, 이 노드도 네임스페이스를 두지 않는다.
@@ -80,6 +86,7 @@ def generate_launch_description():
         declare_params_file,
         declare_fleet,
         declare_auto_brain,
+        declare_manifest_brains,
         # fleet 인자를 실제 경로로 바꿔야 하는데 그건 런타임에만 알 수 있어서
         # OpaqueFunction 으로 노드 생성을 늦춘다.
         OpaqueFunction(function=make_node),

@@ -70,6 +70,9 @@ def load_fleet(node, path: str):
     with open(manifest_path, encoding='utf-8') as f:
         manifest = yaml.safe_load(f)
 
+    # 뇌를 누가 띄우는가. 노드 파라미터를 그대로 따른다 (기본 True = 소환기가 띄움).
+    manifest_brains = getattr(node, 'manifest_brains', True)
+
     entries = _as_list(manifest, manifest_path)
     area = manifest.get('spawn_area') if isinstance(manifest, dict) else None
     bounds = None
@@ -81,6 +84,7 @@ def load_fleet(node, path: str):
 
     node.get_logger().info(
         f'편대 소환 시작: {manifest_path.name} — 항목 {len(entries)}개'
+        + (', 뇌는 소환기가 띄움' if manifest_brains else ', 뇌는 로봇별 컨테이너 담당')
         + (f', spawn_area={bounds}' if bounds else ''))
 
     made, attached, failed = [], [], []
@@ -108,12 +112,18 @@ def load_fleet(node, path: str):
                 force=bool(entry.get('force', False)),
                 bounds=bounds,
                 strict_map=bool(entry.get('strict', False)),
+                launch_brain=manifest_brains,
             )
 
-            # 이름이 이미 월드에 있으면 그 몸을 회수한다 — 뇌가 살아 있으면 그냥 두고,
-            # 몸만 남은 것이면 지우고 새로 소환한다.
-            # (뇌만 다시 붙이면 센서가 죽는다. reclaim() 주석 참고)
             if robot_id and robot_id in {r for r, _, _ in node._scan_robots()}:
+                if not manifest_brains:
+                    # 뇌가 로봇별 컨테이너에 있으면 우리는 그 뇌의 생사를 모른다.
+                    # 여기서 몸을 지우면 **정상 동작 중인 외부 드라이버의 연결을 끊는다.**
+                    # 그러니 이미 있는 몸은 손대지 않는다.
+                    attached.append((label, f'{robot_id} 몸이 이미 있어 그대로 둡니다'))
+                    continue
+                # 뇌를 우리가 띄우는 경우: 살아 있으면 두고, 몸만 남은 것이면
+                # 지우고 새로 소환한다 (뇌만 다시 붙이면 센서가 죽는다 — reclaim() 주석)
                 result = node.reclaim(entry['type'], robot_id, **spawn_kwargs)
                 if result.success:
                     attached.append((label, result.message))
