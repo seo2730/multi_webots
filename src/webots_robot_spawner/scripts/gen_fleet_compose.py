@@ -195,13 +195,33 @@ def patch(path, block):
     return text.replace('\nservices:\n', '\nservices:\n' + block + '\n', 1)
 
 
-def set_manifest_brains(text):
-    """생성된 compose 에서는 fleet 이 매니페스트 로봇의 뇌를 띄우지 않는다."""
-    if 'manifest_brains:=' in text:
-        return re.sub(r'manifest_brains:=\w+', 'manifest_brains:=false', text)
-    return re.sub(
-        r'(ros2 launch webots_robot_spawner spawner\.launch\.py[^"\n]*)',
-        r'\1 manifest_brains:=false', text, count=1)
+def set_fleet_command(text, manifest_name):
+    """fleet 서비스의 실행 인자를 이 생성 결과에 맞춘다.
+
+    두 가지를 맞춘다.
+      fleet:=NAME        어떤 매니페스트로 뽑았는지. **이게 어긋나면 compose 의
+                         로봇 컨테이너와 소환기가 서로 다른 편대를 가리킨다.**
+      manifest_brains    false — 매니페스트 로봇의 뇌는 로봇별 컨테이너가 띄운다
+    """
+    # 🚨 command 줄만 건드린다. 파일 전체에 치환하면 **주석 안의 fleet:= 예시까지
+    # 바뀌어** 설명이 깨진다(실제로 겪음: "fleet:='' 로 두면" 이 "fleet:=x.yaml'' 로
+    # 두면" 이 됐다).
+    def fix_line(line):
+        if 'spawner.launch.py' not in line:
+            return line
+        if 'fleet:=' in line:
+            line = re.sub(r'fleet:=[\w.\-]*', f'fleet:={manifest_name}', line)
+        else:
+            line = line.replace(
+                'spawner.launch.py', f'spawner.launch.py fleet:={manifest_name}', 1)
+        if 'manifest_brains:=' in line:
+            line = re.sub(r'manifest_brains:=\w+', 'manifest_brains:=false', line)
+        else:
+            # 닫는 따옴표 앞에 붙인다.
+            line = re.sub(r'(fleet:=[\w.\-]+)', r'\1 manifest_brains:=false', line, count=1)
+        return line
+
+    return '\n'.join(fix_line(ln) for ln in text.split('\n'))
 
 
 def main():
@@ -230,7 +250,7 @@ def main():
         path = REPO / 'docker-configs' / plat / 'docker-compose.yml'
         if not path.is_file():
             raise SystemExit(f'compose 파일이 없습니다: {path}')
-        new = set_manifest_brains(patch(path, render(robots, plat, args.cpus, args.fleet)))
+        new = set_fleet_command(patch(path, render(robots, plat, args.cpus, args.fleet)), args.fleet)
         if new == path.read_text(encoding='utf-8'):
             print(f'  {plat}: 변경 없음')
             continue

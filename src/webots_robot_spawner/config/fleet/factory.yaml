@@ -1,0 +1,30 @@
+# factory 월드용 편대.
+#
+# 월드는 Webots 샘플을 그대로 가져온 것이다 (projects/samples/environments/factory).
+# 밖에서 가져온 월드도 prepare_world.py 로 준비만 하면 그대로 쓸 수 있다는 것을
+# 보여 주는 예시다:
+#
+#   docker run --rm -v "$PWD:/w" -w /w windows-master python3 \
+#     src/webots_robot_spawner/scripts/prepare_world.py \
+#     --source /usr/local/webots/projects/samples/environments/factory/worlds/factory.wbt \
+#     --name factory
+#
+#   ros2 launch webots_robot_spawner spawner.launch.py fleet:=factory.yaml
+#
+# 좌표는 월드의 사물 배치를 보고 빈 곳으로 골랐다.
+#   바닥      x -10 ~ 10, y -12.5 ~ 3.9  (20 x 16.4 m)
+#   벽        x = ±10, y = 3.82, y = -12.5
+#   작업대    (0, -5) 부근 — 공구·Aibo·테이블
+#   적재 구역  y < -10  — 나무 상자·팔레트
+#   배관 설비  x -7.6 ~ -4.9, y ≈ 3
+#   드럼·계단  x > 8, y > 2 / y ≈ -3 ~ 0
+
+fleet:
+  - {type: ugv,   id: ugv1,   x: -6.0, y: -8.5, yaw: 0.0}
+  - {type: ugv,   id: ugv2,   x:  5.0, y: -8.5, yaw: 3.1416}
+  - {type: spot,  id: spot1,  x: -6.0, y: -1.0, yaw: 0.0}
+  - {type: drone, id: drone1, x:  4.0, y: -1.0, yaw: 0.0}
+
+# 무작위 배치를 섞어 쓸 때의 영역. 위 장애물 구역을 피해 안쪽으로 좁혔다.
+# (맵이 생기기 전에는 이 영역 안에서 로봇 간 간격만 보고 고르므로 보수적으로 잡는다)
+spawn_area: [-8.5, -9.5, 7.0, 2.0]
