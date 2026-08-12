@@ -1,2 +1,6 @@
 # VS Code C/C++ 확장 브라우징 캐시 (로컬 전용, 용량 큼)
 .vscode/browse.vc.db*
+
+# 파이썬 바이트코드 (스크립트를 컨테이너에서 돌릴 때 생김)
+__pycache__/
+*.pyc
