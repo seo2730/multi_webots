@@ -29,6 +29,7 @@ class RobotType:
     brain_launch: str           # 런치 파일 이름
     has_map: bool               # SLAM으로 맵을 만드는가 (맵 병합 참여 여부)
     needs_def: bool = False     # 씬 트리에 DEF 이름을 붙여야 하는가 (아래 참고)
+    needs_sync: bool = False    # 제어 루프가 매 물리 스텝 돌아야 하는가 (아래 참고)
     ready: bool = True          # False면 아직 지원 안 함 (아래 주석 참고)
     not_ready_reason: str = ''
 
@@ -47,8 +48,7 @@ class RobotType:
         회전은 z축(수직) 한 축만 쓴다. 지면에 놓는 로봇이라 roll/pitch를 줄 이유가 없고,
         yaw만 쓰면 .wbt의 `rotation 0 0 1 <yaw>` 표기와 그대로 맞아떨어진다.
 
-        🚨 `synchronization FALSE`가 핵심이다. 월드에 정적으로 놓인 로봇들과 다른 점이고,
-        그렇게 해야 하는 이유가 있다.
+        🚨 주입 시점에는 **항상** `synchronization FALSE`로 넣는다. 이유가 있다.
 
         `<extern>` 컨트롤러는 synchronization TRUE면 Webots가 매 스텝 그 컨트롤러의
         응답을 기다린다. 로봇을 주입하는 순간부터 뇌가 접속할 때까지 몇 초간
@@ -56,8 +56,19 @@ class RobotType:
         step()을 돌고 있으므로 같이 멈추고, 뇌가 끝내 안 뜨면 롤백 감시 타이머조차
         돌지 못해 영원히 굳는다 (헤드리스 Webots로 실측 확인).
 
-        FALSE로 두면 Webots가 이 로봇을 기다리지 않는다. 대신 뇌가 느려질 때 제어 주기가
-        물리 주기와 어긋날 수 있다. 시뮬이 통째로 멈추는 것보다는 낫다는 판단이다.
+        다만 FALSE로 **계속 두면** 뇌가 느릴 때 제어 주기가 물리 주기와 어긋난다.
+        지상 로봇은 그래도 버티지만 드론은 못 버틴다 — drone_setup.md 가 그 이유를
+        미리 적어 뒀다: "Webots가 매 스텝 step()을 직접 호출하므로 통신 지연이 있어도
+        제어 주기가 깨지지 않는다. 드론처럼 루프가 끊기면 추락하는 기체를 <extern>으로
+        돌릴 수 있는 이유다." FALSE 는 정확히 그 보장을 없앤다.
+
+        실제로 로봇 6대의 뇌를 한 컨테이너에서 돌리자 소환된 드론이 이륙하지 못하고
+        바닥(z≈0.03)에 누워 미끄러졌다. 짐벌 경고에 찍힌 롤 각속도 14 rad/s 는
+        "호버링"이 아니라 "뒹구는" 값이다.
+
+        그래서 `needs_sync` 인 로봇은 **뇌가 붙은 것을 확인한 뒤** 이 필드를 TRUE로
+        되돌린다 (spawn_supervisor._arm_rollback). 주입 순간의 멈춤은 피하고 비행에
+        필요한 보장은 되찾는다.
 
         `needs_def`인 로봇은 `DEF <이름>`을 붙인다. Spot이 그렇다 — spot_driver가
         Supervisor로 자기 몸 노드를 이름으로 찾아야 하는데, DEF가 없으면 찾을 수단이 없고
@@ -87,6 +98,10 @@ DRONE = RobotType(
     brain_package='webots_python',
     brain_launch='single_drone.launch.py',
     has_map=False,          # 거리 센서가 없어 SLAM을 못 돌린다
+    # 🚁 드론만 True. 자세 루프가 매 물리 스텝 돌지 않으면 뒤집혀 추락한다.
+    #    지상 로봇은 제어 주기가 느슨해도 넘어지지 않으므로 False 로 둔다
+    #    (동기화를 켜면 그 로봇의 뇌가 죽을 때 시뮬 전체가 멈추는 대가가 있다).
+    needs_sync=True,
 )
 
 # ---------------------------------------------------------------------------

@@ -53,10 +53,18 @@ class LocalProcessLauncher:
             'ROBOT_INIT_X': f'{x:.6f}',
             'ROBOT_INIT_Y': f'{y:.6f}',
             'ROBOT_INIT_YAW': f'{yaw:.6f}',
-            # 소환된 로봇은 Webots 노드가 synchronization FALSE로 들어간다
-            # (이유는 robot_types.spawn_string 주석). 드라이버 쪽 설정도 같이 맞춰야
-            # 양쪽이 어긋나지 않는다. 정적으로 뜨는 로봇들은 이 변수가 없어 기본 True.
-            'ROBOT_SYNCHRONIZATION': 'false',
+            # 드라이버의 동기화 모드. 로봇 종류가 요구하는 값을 그대로 쓴다.
+            #
+            # 드론은 자세 루프가 매 물리 스텝 돌아야 해서 True 여야 한다. 지상 로봇은
+            # False 로 둔다 — 동기화를 켜면 그 뇌가 죽을 때 시뮬 전체가 멈추는데,
+            # 지상 로봇은 제어 주기가 느슨해도 넘어지지 않으므로 그 대가를 치를 이유가 없다.
+            #
+            # 주의: Webots 노드 쪽 synchronization 은 주입 시점엔 항상 FALSE 이고
+            # (뇌 접속 전에 시뮬이 멈추는 것을 막기 위해), 뇌가 붙은 뒤 소환기가
+            # needs_sync 로봇에 대해 TRUE 로 되돌린다. 드라이버는 처음부터 동기
+            # 모드로 떠 있어도 문제가 없다 — 노드가 FALSE 인 동안 step() 이 즉시
+            # 반환할 뿐이다.
+            'ROBOT_SYNCHRONIZATION': 'true' if robot_type.needs_sync else 'false',
         })
 
         # Spot 처럼 Supervisor 로 자기 몸 노드를 찾는 드라이버를 위해, 씬 트리에 붙인

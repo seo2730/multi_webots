@@ -84,7 +84,10 @@ class SpawnSupervisor(Node):
             self, log_dir=self.get_parameter('log_dir').value)
 
         self._rng = np.random.default_rng()
-        self._spawned = {}   # robot_id -> (webots node, BrainHandle | None)
+        # robot_id -> (webots node, BrainHandle 또는 None, RobotType)
+        # RobotType 을 같이 들고 있는 이유: 뇌 접속 확인 뒤에 그 로봇이 동기화를
+        # 필요로 하는지(needs_sync) 알아야 하기 때문이다.
+        self._spawned = {}
 
         self._srv = self.create_service(SpawnRobot, 'spawn_robot', self._on_spawn)
 
@@ -259,7 +262,7 @@ class SpawnSupervisor(Node):
                 return SpawnResult(False, robot_id=robot_id, message=msg)
             self._arm_rollback(robot_id)
 
-        self._spawned[robot_id] = (node, handle)
+        self._spawned[robot_id] = (node, handle, robot_type)
 
         return SpawnResult(
             True, robot_id=robot_id, x=x, y=y, yaw=yaw,
@@ -389,9 +392,10 @@ class SpawnSupervisor(Node):
             entry = self._spawned.get(robot_id)
             if entry is None:
                 return
-            node, handle = entry
+            node, handle, robot_type = entry
             if handle is None or handle.is_alive():
                 self.get_logger().info(f'[{robot_id}] 뇌 정상 동작 확인')
+                self._enable_sync_if_needed(robot_id, node, robot_type)
                 return
 
             self.get_logger().error(
@@ -406,10 +410,36 @@ class SpawnSupervisor(Node):
 
         box['timer'] = self.create_timer(self._grace, check)
 
+    def _enable_sync_if_needed(self, robot_id, node, robot_type):
+        """뇌가 붙은 것을 확인한 뒤 Webots 노드의 synchronization 을 TRUE 로 되돌린다.
+
+        주입할 때는 FALSE 여야 한다(뇌가 붙기 전에 시뮬이 멈추므로). 하지만 드론은
+        자세 루프가 매 물리 스텝 돌아야 뒤집히지 않는다. 그래서 뇌 접속을 확인한
+        이 시점에 되돌린다.
+
+        되돌린 뒤에는 그 로봇의 뇌가 죽으면 시뮬 전체가 멈춘다. 정적으로 놓였던
+        drone1 이 원래 그랬으므로 새로운 위험은 아니지만, 알고 있어야 한다.
+        """
+        if robot_type is None or not robot_type.needs_sync or node is None:
+            return
+        field = node.getField('synchronization')
+        if field is None:
+            self.get_logger().warn(
+                f'[{robot_id}] synchronization 필드가 없어 동기화를 되돌리지 못했습니다')
+            return
+        try:
+            field.setSFBool(True)
+        except Exception as exc:                          # noqa: BLE001
+            self.get_logger().warn(f'[{robot_id}] 동기화 전환 실패: {exc}')
+            return
+        self.get_logger().info(
+            f'[{robot_id}] synchronization 을 TRUE 로 되돌렸습니다 '
+            '(자세 루프가 매 물리 스텝 돌아야 하는 기체)')
+
     # ------------------------------------------------------------------ 정리
 
     def shutdown(self):
-        for robot_id, (_, handle) in self._spawned.items():
+        for robot_id, (_, handle, _type) in self._spawned.items():
             if handle is not None and handle.is_alive():
                 self.get_logger().info(f'[{robot_id}] 뇌 종료')
                 try:
