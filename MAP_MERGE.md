@@ -112,7 +112,7 @@ graph LR
 > **실제 시뮬에서 돌려보니 틀렸고, 좌표가 정확히 두 배로 어긋났다.**
 
 원인은 Webots 드라이버에 있다.
-[robot_driver.py:117-119](src/Webots-SummitXL/workspace/simulator/simulator/robot_driver.py#L117-L119)가
+[robot_driver.py:163-165](src/Webots-SummitXL/workspace/simulator/simulator/robot_driver.py#L163-L165)가
 `odom → base_link`를 **GPS 원값 그대로** 넣는다.
 
 ```python
@@ -557,6 +557,21 @@ Webots + 컨테이너 5개(master/ugv1/ugv2/spot1/drone1)를 실제로 띄워 �
 남은 오차는 GPS 센서 장착 위치와 `base_link` 원점 차이, 물리 안정화 중의 미세 이동 때문이다.
 **좌표계가 틀렸다면 수 m~10 m 단위로 어긋난다** — 이 검사가 정렬 버그를 잡아낸 근거다.
 
+**바퀴 관절** — ugv1을 0.3 m/s로 1.5초 전진시킨 뒤 각도 변화를 본다.
+
+| 관절 | 전 | 후 | Δ |
+|---|---|---|---|
+| front_left_wheel_joint | +2175.900 | +2176.836 | 0.936 rad |
+| front_right_wheel_joint | +2220.740 | +2221.676 | 0.936 rad |
+| back_left_wheel_joint | +2059.586 | +2060.522 | 0.936 rad |
+| back_right_wheel_joint | +2074.730 | +2075.666 | 0.936 rad |
+
+네 바퀴가 **같은 값**인 것이 직진에 부합한다. 크기도 맞다 — 시뮬이 실시간의 약 27%로 도므로
+실제 진행 거리는 `0.3 × 1.5 × 0.27 ≈ 0.12 m`, 바퀴 반경 0.123 m로 나누면 약 0.99 rad이다.
+
+> 값이 2000을 넘는 것은 연속 회전 관절이라 각도가 계속 누적되기 때문이다.
+> TF 계산은 각도를 그대로 쓰므로 문제없다.
+
 ### 9-3. 동적 합류/이탈 검증
 
 월드에 없는 **가상 로봇을 실제 경로 그대로 합류시켰다 뗀다.**
@@ -630,28 +645,42 @@ ros2 run tf2_ros tf2_echo ugv1/map ugv1/base_link
 `robot_state_publisher`는 `joint_states`를 받아야 움직이는 관절의 TF를 만들기 때문에,
 관절 상태가 안 오면 그 아래 링크 전체의 TF가 사라진다.
 
-실측된 누락:
+처음 진단했을 때의 누락:
 
 | 로봇 | 움직이는 관절 | joint_states 수신 | 누락 | 원인 |
 |---|---|---|---|---|
-| ugv1 / ugv2 | 4 | **0** | 4 (바퀴) | [robot_driver.py:24-36](src/Webots-SummitXL/workspace/simulator/simulator/robot_driver.py#L24-L36)이 바퀴 모터를 **구동만 하고 상태를 발행하지 않음** |
+| ugv1 / ugv2 | 4 | **0** | 4 (바퀴) | 드라이버가 바퀴 모터를 구동만 하고 상태를 발행하지 않음 |
 | spot1 | 25 | 16 | 9 (팔·그리퍼) | 월드의 Spot에 팔이 안 달려 있는데 URDF에는 팔이 있음 |
 | drone1 | 0 | 0 | 0 | 움직이는 관절이 없어 문제 없음 |
 
 **드론만 멀쩡했던 것이 진단의 결정적 단서였다.**
 
-`joint_state_filler`가 이걸 메운다. URDF에서 움직이는 관절을 뽑고 `joint_states`를 지켜보다가
-**한 번도 안 나타난 관절만** 0으로 발행한다. 드라이버가 실제로 발행하는 관절은 건드리지 않는다
+대응은 두 갈래로 갈렸다.
+
+**UGV 바퀴 — 드라이버가 실값을 발행하도록 고쳤다 (근본 해결).**
+[robot_driver.py](src/Webots-SummitXL/workspace/simulator/simulator/robot_driver.py)가
+모터에서 `getPositionSensor()`로 위치 센서를 직접 얻어 `joint_states`를 발행한다.
+센서 이름을 추측하지 않아도 되고, PositionSensor가 없는 모델이면 `None`이 돌아와
+그 바퀴만 조용히 빠진다. **이제 화면에서 바퀴가 실제로 돈다.**
+
+**Spot 팔 — `joint_state_filler`가 0으로 채운다 (대증요법).**
+실제로 안 달린 팔이라 채울 실값 자체가 없다. URDF에서 움직이는 관절을 뽑고
+`joint_states`를 지켜보다가 **한 번도 안 나타난 관절만** 0으로 발행한다.
+드라이버가 실제로 발행하는 관절은 건드리지 않는다
 (robot_state_publisher는 부분 `JointState`를 받아 내부에서 합친다).
 
-**대증요법이라 두 가지를 감수한다.**
+UGV를 고친 뒤 마스터 로그는 이렇게 바뀐다.
 
-- UGV 바퀴가 화면에서 돌지 않는다. 제대로 고치려면 `robot_driver.py`가 바퀴 PositionSensor를
-  읽어 발행해야 하는데 그 파일은 서브모듈이다.
-- Spot 팔이 접힌 자세로 그려진다. 실제로는 안 달린 팔이다.
-  거슬리면 RViz의 `spot1 model` → Links에서 `spotarm_*` / `gripper_*`를 체크 해제한다.
+```
+[ugv1] 모든 관절이 정상 발행 중, 채울 것 없음
+[spot1] 아무도 발행하지 않는 관절 9개를 0으로 채움: Slider11, gripper_left_finger_joint, ...
+```
 
-지금 이 값들을 쓰는 소비자는 없다 (오도메트리가 GPS 기반이라 바퀴 각도와 무관).
+`joint_state_filler`는 그대로 둔다. Spot 팔에 여전히 필요하고, 앞으로 소환되는 로봇에도
+같은 안전망이 걸린다.
+
+> Spot 팔이 접힌 자세로 그려지는 것이 거슬리면 RViz의 `spot1 model` → Links에서
+> `spotarm_*` / `gripper_*`를 체크 해제한다. 근본 해결은 URDF에서 팔을 빼는 것이다.
 
 > **구현 함정**: 이 노드는 자기가 발행하는 토픽을 동시에 구독한다. 누락 판단을 매 주기
 > 다시 하면 **자기가 쏜 메시지를 "이미 누가 발행 중"으로 오인해 발행을 멈춘다.**
@@ -679,11 +708,19 @@ ros2 run tf2_ros tf2_echo ugv1/map ugv1/base_link
 → RViz 설정의 표시 이름을 전부 영어로 변경. 터미널 로그는 UTF-8로 정상 출력되므로 그대로 뒀다.
 폰트를 넣고 싶으면 Dockerfile에 `fonts-nanum`을 추가하면 되지만, 이미지가 커진다.
 
-### ⑦ spot1은 등록 노드 없이 자동 탐색으로만 참여한다
+### ⑦ 로봇 4종 모두 등록 노드를 띄운다
 
-`single_spot_launch.py`가 **서브모듈**([webots_ros2_spot](https://github.com/seo2730/webots_ros2_spot))에
-있어서 건드리지 않았다. 자동 탐색만으로 병합에 정상 참여하므로 문제는 없지만,
-하트비트가 없어 이탈 감지가 맵 수신 시각에만 의존한다. 붙이려면 런치에 이 블록을 추가한다.
+한동안 spot1만 `robot_registrar` 없이 **자동 탐색으로만** 병합에 참여했다.
+`single_spot_launch.py`가 서브모듈([webots_ros2_spot](https://github.com/seo2730/webots_ros2_spot))에
+있어 미뤄뒀던 것인데, 그 상태에서는 하트비트가 없어 **이탈 감지가 맵 수신 시각에만 의존**했다.
+지금은 붙여서 ugv/spot/drone 전부 같은 등록 경로를 탄다.
+
+```bash
+$ ros2 topic echo /robot_registry | grep robot_id
+# ['drone1', 'spot1', 'ugv1', 'ugv2']
+```
+
+새 로봇 런치에 붙일 때는 이 블록만 추가하면 된다.
 
 ```python
 Node(
@@ -693,6 +730,8 @@ Node(
     parameters=[{'robot_id': ns, 'has_map': True, 'map_topic': f'/{ns}/map'}],
 )
 ```
+
+> registrar가 없어도 자동 탐색으로 병합에는 참여한다. 잃는 것은 **빠른 이탈 감지**뿐이다.
 
 ### ⑧ RViz2가 죽어도 병합은 계속된다
 
@@ -722,10 +761,29 @@ Windows에서 X 서버(VcXsrv 등)가 안 떠 있으면 `rviz2` 프로세스가 
 `/map_merged`는 **관제·시각화·웹 전용**이다. 각 로봇 Nav2는 계속 자기 `{ns}/map`을 쓴다.
 되먹이면 프레임 순환과 코스트맵 진동이 생긴다.
 
-### ⑪ mac 환경은 자동 적용 안 됨
+### ⑪ mac은 맵 병합만 백그라운드로 띄운다
 
-mac의 master 서비스는 VNC 스크립트(`/start_vnc.sh`)로 뜨는 구조라 자동 변경하지 않았다.
-VNC 안에서 `ros2 launch webots_map_merge master.launch.py`를 직접 실행하면 된다.
+mac의 master 서비스는 VNC 스크립트(`/start_vnc.sh`)로 뜨는 구조다.
+한동안 windows/ubuntu만 바뀌어 있어서, **mac에서는 사용자가 VNC에 접속해 손으로
+RViz를 띄우기 전까지 `/map_merged`가 아예 안 나왔다.**
+
+화면이 필요 없는 맵 병합만 `use_rviz:=false`로 백그라운드에 띄우고 VNC를 포그라운드로 둔다.
+
+```yaml
+command: >
+  bash -c "source /ros2_ws/install/setup.bash &&
+           ros2 launch webots_map_merge master.launch.py use_rviz:=false &
+           /start_vnc.sh"
+```
+
+`A && B & C`는 `(A && B)`를 백그라운드로 돌리고 `C`를 포그라운드로 둔다.
+컨테이너를 살아있게 하는 것은 여전히 `/start_vnc.sh`다.
+
+RViz는 `localhost:6080` 접속 후 내부 터미널에서 띄운다.
+
+```bash
+ros2 run rviz2 rviz2 -d /ros2_ws/install/webots_map_merge/share/webots_map_merge/rviz/master_merged.rviz
+```
 
 ---
 
@@ -761,8 +819,8 @@ VNC 안에서 `ros2 launch webots_map_merge master.launch.py`를 직접 실행�
   구조가 된다. 다음에 손대기 좋은 지점.
 - **3D 모델은 여전히 수동** — 새 로봇의 위치·이름은 자동으로 뜨지만 메시 모델은
   RViz 디스플레이를 하나 추가해야 한다. RViz2의 구조적 제약이라 우회로가 마땅치 않다.
-- **UGV 바퀴 관절 상태가 가짜(0)** — 제대로 고치려면 서브모듈의 `robot_driver.py`가
-  바퀴 PositionSensor를 읽어 발행해야 한다.
+- **Spot 팔 관절이 가짜(0)** — 실제로 안 달린 팔이라 채울 실값이 없다. 근본 해결은
+  Spot URDF에서 팔을 빼는 것이고, 그러면 `joint_state_filler`가 Spot에서도 물러난다.
 - **시뮬레이션이 실시간의 약 27%로 동작** (컨테이너 5개 + GUI 렌더링).
   `/map_merged`가 시뮬 시간 1 Hz면 벽시계로는 약 0.3 Hz로 보인다. 테스트 시 감안할 것.
 
@@ -792,8 +850,14 @@ src/webots_map_merge/
 | [master_merged.rviz](src/webots_map_merge/rviz/master_merged.rviz) | 마스터 | 관제 화면 설정 (표시 이름은 영어로) |
 | [master.launch.py](src/webots_map_merge/launch/master.launch.py) | 마스터 | 위 노드들 + RViz2 |
 | [single_ugv.launch.py](src/webots_python/launch/single_ugv.launch.py) | ugv | `robot_registrar` 포함 |
+| [single_spot_launch.py](src/webots_ros2_spot/launch/single_spot_launch.py) | spot | `robot_registrar` 포함 (서브모듈) |
 | [single_drone.launch.py](src/webots_python/launch/single_drone.launch.py) | drone | `robot_registrar` (`has_map: False`) |
+| [robot_driver.py](src/Webots-SummitXL/workspace/simulator/simulator/robot_driver.py) | ugv | GPS 절대좌표 odom + **바퀴 관절 발행** (서브모듈) |
 | `docker-configs/*/docker-compose.yml` | — | master 실행 명령, `ROBOT_INIT_*` |
+
+> 서브모듈 2곳([Webots-SummitXL](https://github.com/seo2730/Webots-SummitXL),
+> [webots_ros2_spot](https://github.com/seo2730/webots_ros2_spot))에 걸쳐 있으므로
+> 그쪽을 고치면 **별도 커밋·푸시 후 본 저장소의 서브모듈 포인터도 올려야** 한다.
 
 ### 관련 문서
 
