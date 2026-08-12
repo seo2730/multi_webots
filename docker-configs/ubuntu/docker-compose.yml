@@ -21,7 +21,17 @@ x-ros-common: &ros-common
     dockerfile: docker-configs/ubuntu/Dockerfile
   networks:
     - ros_bridge
-  ipc: host
+  # 🚨 ipc: host 를 쓰지 않는다. 쓰면 컨테이너들이 호스트의 /dev/shm 을 공유하는데,
+  # FastDDS 참여자는 네트워크 모드와 무관하게 자기 포트용 SHM 파일
+  # (/dev/shm/fastrtps_portNNNNN + _el + sem.*_mutex)을 만든다. 그래서 컨테이너를
+  # 재생성할 때마다 호스트에 파일이 남아 쌓이고, 700개를 넘기자 새 참여자가
+  # "fastrtps_portNNNNN: open_and_lock_file failed" 로 못 뜨는 것을 실측했다
+  # (ros2 topic CLI 가 아예 안 됨).
+  #
+  # bridge 네트워크에서는 FastDDS 가 컨테이너를 서로 "다른 머신"으로 봐서 데이터
+  # 전송에 SHM 을 쓰지 않는다. 즉 ipc: host 로 얻는 것이 없다.
+  # 대신 shm_size 로 컨테이너별 /dev/shm 용량만 키운다 (mac 설정과 동일).
+  shm_size: '1gb'
   pid: host
   # 🌟 host.docker.internal은 Docker Desktop(윈도우/맥) 전용 별칭이라 리눅스 Docker Engine엔 기본 등록이 안 됩니다.
   # launch 파일들이 WEBOTS_CONTROLLER_URL에서 host.docker.internal을 그대로 쓰므로, 코드 수정 없이

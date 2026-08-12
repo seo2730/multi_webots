@@ -99,17 +99,7 @@ def load_fleet(node, path: str):
             robot_id = '' if count > 1 else str(entry.get('id', ''))
             label = robot_id or f"{entry['type']}#{index}.{n}"
 
-            # 이미 몸이 있는 이름이면 몸을 또 만들지 않고 뇌만 붙인다.
-            # fleet 컨테이너가 재시작됐을 때 편대를 그대로 복구하기 위한 경로다.
-            if robot_id and robot_id in {r for r, _, _ in node._scan_robots()}:
-                result = node.attach_brain(entry['type'], robot_id)
-                (attached if result.success else failed).append(
-                    (label, result.message))
-                continue
-
-            result = node.spawn_one(
-                type_key=entry['type'],
-                robot_id=robot_id,
+            spawn_kwargs = dict(
                 random_place=bool(entry.get('random', False)),
                 x=float(entry.get('x', 0.0)),
                 y=float(entry.get('y', 0.0)),
@@ -119,6 +109,20 @@ def load_fleet(node, path: str):
                 bounds=bounds,
                 strict_map=bool(entry.get('strict', False)),
             )
+
+            # 이름이 이미 월드에 있으면 그 몸을 회수한다 — 뇌가 살아 있으면 그냥 두고,
+            # 몸만 남은 것이면 지우고 새로 소환한다.
+            # (뇌만 다시 붙이면 센서가 죽는다. reclaim() 주석 참고)
+            if robot_id and robot_id in {r for r, _, _ in node._scan_robots()}:
+                result = node.reclaim(entry['type'], robot_id, **spawn_kwargs)
+                if result.success:
+                    attached.append((label, result.message))
+                else:
+                    failed.append((label, result.message))
+                continue
+
+            result = node.spawn_one(
+                type_key=entry['type'], robot_id=robot_id, **spawn_kwargs)
             if result.success:
                 made.append((result.robot_id, result.x, result.y))
             else:

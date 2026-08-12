@@ -267,37 +267,78 @@ class SpawnSupervisor(Node):
                      + ('' if self._auto_brain
                         else ' — 뇌는 직접 띄우세요(auto_launch_brain=false)')))
 
-    def attach_brain(self, type_key, robot_id) -> SpawnResult:
-        """이미 몸이 있는 로봇에 뇌만 붙인다.
+    def reclaim(self, type_key, robot_id, **spawn_kwargs) -> SpawnResult:
+        """뇌 없이 몸만 남은 로봇을 **버리고 새로 소환한다.**
 
-        fleet 컨테이너가 재시작되면(월드 재로드 등) 소환기가 추적하던 뇌 목록이
-        비는데 Webots 안의 몸은 그대로 남아 있을 수 있다. 그때 몸을 또 만들면
-        이름이 충돌하므로, 뇌만 다시 띄운다.
+        fleet 컨테이너가 재시작되면(월드 재로드 등) 소환기가 추적하던 뇌 목록은
+        비는데 Webots 안의 몸은 그대로 남아 있다. 이름이 충돌하니 뭔가 해야 한다.
+
+        🚨 처음에는 "몸을 그대로 두고 뇌만 다시 붙인다"로 만들었는데 **틀렸다.**
+        실측하면 그렇게 붙인 로봇은 센서가 죽는다. 컨트롤러가 끊겼다 다시 붙는
+        과정에서 장치 활성 상태가 살아나지 않고, 플러그인이 값을 읽을 때마다
+
+            Error: wb_gps_get_values() called for a disabled device!
+
+        가 뜬다. drone_driver 는 GPS 가 NaN 이면 그 스텝을 건너뛰도록 되어 있어서
+        odom 을 영구히 발행하지 못한다. 실측 비교: 뇌만 붙인 drone1 은 이 오류가
+        4726건, 같은 시점에 새로 소환한 drone2 는 0건이었다.
+
+        그래서 몸을 지우고 처음부터 다시 만든다. 뇌가 없던 몸이므로 잃을 상태가 없고,
+        매니페스트는 "원하는 상태"의 선언이니 좌표도 매니페스트 값으로 되돌아간다.
         """
         robot_type = ROBOT_TYPES.get(str(type_key).strip().lower())
         if robot_type is None:
             return SpawnResult(False, robot_id=robot_id,
                                message=f"모르는 로봇 종류 '{type_key}'")
 
-        for name, x, y in self._scan_robots():
-            if name != robot_id:
-                continue
-            if not self._auto_brain:
-                return SpawnResult(True, robot_id=robot_id, x=x, y=y,
-                                   message='몸만 확인 (auto_launch_brain=false)')
-            try:
-                handle = self._launcher.launch(robot_id, robot_type, x, y, 0.0)
-            except Exception as exc:                      # noqa: BLE001
-                msg = f'뇌 실행 실패: {exc}'
-                self.get_logger().error(f'[{robot_id}] {msg}')
-                return SpawnResult(False, robot_id=robot_id, message=msg)
-            # 몸은 우리가 만든 게 아니므로 롤백 대상이 아니다. 노드는 기록만 해 둔다.
-            self._spawned[robot_id] = (None, handle)
-            return SpawnResult(True, robot_id=robot_id, x=x, y=y,
-                               message=f'{robot_id} 몸이 이미 있어 뇌만 붙였습니다')
+        # 우리가 띄운 뇌가 아직 살아 있으면 건드리지 않는다.
+        entry = self._spawned.get(robot_id)
+        if entry is not None and entry[1] is not None and entry[1].is_alive():
+            return SpawnResult(True, robot_id=robot_id,
+                               message=f'{robot_id} 는 이미 정상 동작 중이라 건너뜁니다')
 
-        return SpawnResult(False, robot_id=robot_id,
-                           message=f'{robot_id} 의 몸을 씬 트리에서 못 찾았습니다')
+        removed = False
+        for i in range(self._root_children.getCount()):
+            node = self._root_children.getMFNode(i)
+            if node is None or node.getTypeName() not in KNOWN_ROBOT_PROTOS:
+                continue
+            name_field = node.getField('name')
+            if name_field is not None and name_field.getSFString() == robot_id:
+                node.remove()
+                removed = True
+                break
+
+        if not removed:
+            return SpawnResult(False, robot_id=robot_id,
+                               message=f'{robot_id} 의 몸을 씬 트리에서 못 찾았습니다')
+
+        self._spawned.pop(robot_id, None)
+        self.get_logger().info(
+            f'[{robot_id}] 뇌 없이 몸만 남아 있어 제거하고 다시 소환합니다')
+
+        # 🚨 remove() 는 다음 스텝에 반영된다. 곧바로 spawn_one 을 부르면 씬 트리
+        # 스캔에 **방금 지운 몸이 아직 보이고**, 그게 자기 자신의 자리를 막는다.
+        # 실측: ugv1 을 회수할 때 드리프트된 자기 몸(-7.71, 1.12)이 목표 좌표에서
+        # 1.56m 거리로 잡혀 "기존 로봇과 너무 가깝습니다"로 거절됐고, 몸은 이미
+        # 지워졌으므로 로봇이 아예 사라졌다.
+        self._sv.step(int(self._sv.getBasicTimeStep()))
+
+        still_there = {n for n, _, _ in self._scan_robots()}
+        if robot_id in still_there:
+            self.get_logger().warn(
+                f'[{robot_id}] 한 스텝 뒤에도 몸이 씬 트리에 남아 있습니다')
+
+        result = self.spawn_one(type_key=type_key, robot_id=robot_id, **spawn_kwargs)
+        if result.success:
+            return result
+
+        # 몸은 이미 지웠으니 여기서 포기하면 로봇이 사라진다. 마지막으로 강행한다.
+        self.get_logger().warn(
+            f'[{robot_id}] 재소환 실패({result.message}) — 몸을 이미 지웠으므로 '
+            'force 로 한 번 더 시도합니다')
+        forced = dict(spawn_kwargs)
+        forced['force'] = True
+        return self.spawn_one(type_key=type_key, robot_id=robot_id, **forced)
 
     # ------------------------------------------------------------------ 편대
 
