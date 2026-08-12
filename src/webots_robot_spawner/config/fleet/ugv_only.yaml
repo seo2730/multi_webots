@@ -1,0 +1,12 @@
+# UGV 2대만. 맵 병합·Nav2 를 가볍게 확인할 때 쓴다.
+#
+# Spot 은 뎁스카메라 5개 병합 + 18 DOF 물리라 CPU 를 크게 먹고, 드론은 SLAM 이
+# 없어 맵 병합에 참여하지 않는다. 맵 관련 작업만 볼 때는 이 편대가 가장 빠르다.
+#
+#   ros2 launch webots_robot_spawner spawner.launch.py fleet:=ugv_only.yaml
+
+fleet:
+  - {type: ugv, id: ugv1, x: -6.159, y: 1.263, yaw: -2.910}
+  - {type: ugv, id: ugv2, x: 8.376,  y: 1.373, yaw: -0.064}
+
+spawn_area: [-9.0, -6.0, 9.0, 7.0]

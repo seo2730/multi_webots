@@ -1,0 +1,19 @@
+# 무작위 편대 — "UGV 3대 + Spot 1대 + 드론 2대를 알아서 배치해라".
+#
+# 이름은 전부 자동 채번된다 (ugv1, ugv2, ugv3 / spot1 / drone1, drone2).
+#
+# 배치는 항상 아래 spawn_area 안에서 이루어진다.
+# ⚠️ 냉시동(월드에 로봇 0대)에서는 SLAM 맵이 없어 그 영역 안에서 **로봇 간 간격만**
+#    보고 배치한다. 벽을 피할 근거가 없다는 뜻이니, spawn_area 는 "대체로 비어 있다"고
+#    아는 영역으로 좁혀 두는 게 안전하다.
+#    맵이 이미 있으면(다른 로봇이 먼저 돌고 있었으면) 영역 안에서 장애물까지 피한다.
+#
+#   ros2 launch webots_robot_spawner spawner.launch.py fleet:=random_squad.yaml
+
+fleet:
+  - {type: ugv,   count: 3, random: true}
+  - {type: spot,  count: 1, random: true}
+  - {type: drone, count: 2, random: true, clearance: 1.0}
+
+# 아레나 중앙부. 벽·가구가 몰려 있는 바깥쪽을 피해 기본값보다 좁게 잡았다.
+spawn_area: [-7.0, -4.5, 7.0, 6.0]

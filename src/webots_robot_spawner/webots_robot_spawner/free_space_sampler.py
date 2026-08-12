@@ -119,19 +119,36 @@ class FreeSpaceSampler:
 
     # ------------------------------------------------------------------ 판정
 
+    def check_robots(self, x: float, y: float, clearance: float, avoid=()):
+        """다른 로봇과 충분히 떨어졌는지만 본다.
+
+        맵 검사와 분리한 이유: 이 둘은 신뢰도가 다르다. 로봇 위치는 씬 트리에서
+        직접 읽은 **사실**이고, 점유격자는 SLAM이 만든 **파생물**이라 낡거나 틀릴 수
+        있다. 그래서 호출하는 쪽이 "로봇 겹침은 절대 안 되지만 맵은 참고만" 같은
+        판단을 할 수 있어야 한다.
+        """
+        for (ax, ay, ar) in avoid:
+            need = clearance + ar
+            dist = math.hypot(x - ax, y - ay)
+            if dist < need:
+                return False, (f'기존 로봇과 너무 가깝습니다 '
+                               f'(({ax:.2f}, {ay:.2f})에서 {dist:.2f}m, '
+                               f'{need:.2f}m 필요)')
+        return True, 'ok'
+
     def check(self, x: float, y: float, clearance: float, avoid=()):
-        """(x, y)에 반경 `clearance`만큼 여유가 있는지 본다.
+        """로봇 간격과 맵 점유를 모두 본다.
 
         Returns:
             (ok: bool, reason: str) — 실패 사유를 그대로 서비스 응답에 실어 보낸다.
         """
-        for (ax, ay, ar) in avoid:
-            need = clearance + ar
-            if math.hypot(x - ax, y - ay) < need:
-                return False, (f'기존 로봇과 너무 가깝습니다 '
-                               f'(({ax:.2f}, {ay:.2f})에서 {math.hypot(x - ax, y - ay):.2f}m, '
-                               f'{need:.2f}m 필요)')
+        ok, reason = self.check_robots(x, y, clearance, avoid)
+        if not ok:
+            return False, reason
+        return self.check_map(x, y, clearance)
 
+    def check_map(self, x: float, y: float, clearance: float):
+        """점유격자만 본다. 맵이 없으면 실패로 다룬다(판단 근거가 없으므로)."""
         if not self.has_map:
             return False, '맵(/map_merged)이 아직 없어 빈 공간을 검사할 수 없습니다'
 
@@ -155,15 +172,76 @@ class FreeSpaceSampler:
                            '(allow_unknown=true로 허용할 수 있습니다)')
         return True, 'ok'
 
-    def sample(self, clearance: float, avoid=(), attempts: int = 200, rng=None):
+    def sample_in_bounds(self, bounds, clearance: float, avoid=(),
+                         attempts: int = 200, rng=None):
+        """주어진 사각형 안에서 자리를 고른다.
+
+        맵이 있으면 영역 안에서 뽑되 맵 검사(check)까지 통과시킨다.
+        맵이 없으면 벽을 피할 근거가 없으므로 **로봇끼리의 간격만 보장한다.**
+
+        후자가 필요한 이유: 월드에 로봇이 하나도 없는 냉시동에서는 SLAM 맵이 존재할
+        수 없는데, 편대 매니페스트는 그 상태에서 `random: true`로 여러 대를 요청할 수
+        있다. 그래서 spawn_area 는 사용자가 "이 안은 대체로 비어 있다"고 아는 영역이어야
+        한다.
+        """
+        xmin, ymin, xmax, ymax = bounds
+        if not (xmax > xmin and ymax > ymin):
+            return None, f'spawn_area 가 뒤집혀 있습니다: {bounds}'
+
+        rng = rng or np.random.default_rng()
+        last_reason = '알 수 없음'
+        for _ in range(attempts):
+            x = float(rng.uniform(xmin, xmax))
+            y = float(rng.uniform(ymin, ymax))
+
+            if self.has_map:
+                ok, reason = self.check(x, y, clearance, avoid)
+                if ok:
+                    return (x, y), 'ok'
+                last_reason = reason
+                continue
+
+            # 맵이 없을 때는 로봇 간 간격만 검사한다.
+            too_close = None
+            for (ax, ay, ar) in avoid:
+                need = clearance + ar
+                dist = math.hypot(x - ax, y - ay)
+                if dist < need:
+                    too_close = (f'기존 로봇과 너무 가깝습니다 '
+                                 f'(({ax:.2f}, {ay:.2f})에서 {dist:.2f}m, '
+                                 f'{need:.2f}m 필요)')
+                    break
+            if too_close is None:
+                return (x, y), 'ok (맵 없음 — 로봇 간격만 검사)'
+            last_reason = too_close
+
+        return None, (f'spawn_area {bounds} 안에서 {attempts}번 시도했지만 '
+                      f'자리를 못 찾았습니다 (마지막 사유: {last_reason})')
+
+    def sample(self, clearance: float, avoid=(), attempts: int = 200, rng=None,
+               bounds=None):
         """빈 자리를 무작위로 하나 고른다. 못 고르면 (None, 사유).
 
         전체 격자에 거리변환을 돌리는 대신, 비어있는 셀 중에서 무작위로 뽑아
         그 자리만 검사하는 기각 샘플링을 쓴다. 맵이 커져도 비용이 맵 크기가 아니라
         시도 횟수에 비례하고, 판정 로직을 check()와 100% 공유할 수 있다.
+
+        Args:
+            bounds: 주어지면 **항상** 이 사각형 안에서만 고른다. 맵이 있으면 그 안에서
+                맵 검사(장애물·미탐색)까지 통과시키고, 없으면 로봇 간격만 본다.
+
+                맵이 있을 때 bounds 를 무시하는 쪽으로도 만들 수 있었지만 그렇게 하지
+                않았다. spawn_area 를 쓰는 사람의 의도는 "여기 안에 두라"이고, 맵이
+                생겼다고 영역 밖에 배치되면 그 의도를 배신한다. 맵은 영역을 넓히는
+                근거가 아니라 영역 안을 더 정확히 보는 수단이다.
         """
+        if bounds is not None:
+            return self.sample_in_bounds(
+                bounds, clearance, avoid=avoid, attempts=attempts, rng=rng)
+
         if not self.has_map:
-            return None, '맵(/map_merged)이 아직 없습니다'
+            return None, ('맵(/map_merged)이 아직 없습니다. 월드가 비어 있는 '
+                          '냉시동이면 매니페스트에 spawn_area 를 지정하세요.')
 
         self._ensure_arrays()
         if len(self._free_cells) == 0:

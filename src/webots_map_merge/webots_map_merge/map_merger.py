@@ -110,6 +110,9 @@ class MapMerger(Node):
 
         self.robots: dict[str, Robot] = {}
         self._tf_signature: tuple = ()
+        # 내용 있는 맵을 한 번이라도 발행했는지. 로봇이 전부 사라졌을 때
+        # 빈 맵을 딱 한 번 보내 래치를 지우기 위한 플래그.
+        self._published_nonempty = False
 
         self._load_robots_from_config()
 
@@ -337,7 +340,25 @@ class MapMerger(Node):
     def _merge_and_publish(self):
         usable = [r for r in self._active() if r.has_map and r.grid is not None]
         if not usable:
+            # 🚨 그냥 return 하면 안 된다. 발행 QoS 가 TRANSIENT_LOCAL 이라
+            # 마지막에 보낸 맵이 래치된 채 영원히 남는다. 로봇이 전부 사라져도
+            # 구독자에게는 유령 맵이 계속 보이고, 그걸 근거로 판단하는 쪽이
+            # 틀린 결정을 한다.
+            #
+            # 실제로 겪은 사례: 월드를 비우고 편대를 처음부터 소환하려 했더니,
+            # 이전 세션 맵에 남아 있던 "옛 로봇의 몸"이 장애물로 찍혀 있어서
+            # 원래 스폰 좌표 4곳이 전부 거절됐다.
+            #
+            # 그래서 한 번은 빈 맵을 보내 상태를 지운다. 계속 보내지는 않는다.
+            if self._published_nonempty:
+                self._publish_empty_map()
+                self._published_nonempty = False
+                self.get_logger().warn(
+                    '병합할 로봇이 없어졌습니다. 낡은 맵이 래치되어 남지 않도록 '
+                    '빈 맵을 한 번 발행합니다.')
             return
+
+        self._published_nonempty = True
 
         # --- 1. 모든 맵을 감싸는 world 기준 축정렬 경계상자 구하기 ---
         min_x = min_y = float('inf')
@@ -409,6 +430,22 @@ class MapMerger(Node):
         out.info.origin.position.y = min_y
         out.info.origin.orientation.w = 1.0
         out.data = merged.reshape(-1).tolist()
+        self.merged_pub.publish(out)
+
+    def _publish_empty_map(self):
+        """폭·높이 0인 빈 격자를 발행해 래치된 낡은 맵을 지운다.
+
+        구독자는 width==0 을 "맵 없음"으로 다루면 된다
+        (webots_robot_spawner 의 FreeSpaceSampler.has_map 이 그렇게 본다).
+        """
+        out = OccupancyGrid()
+        out.header.stamp = self.get_clock().now().to_msg()
+        out.header.frame_id = self.world_frame
+        out.info.resolution = self.resolution
+        out.info.width = 0
+        out.info.height = 0
+        out.info.origin.orientation.w = 1.0
+        out.data = []
         self.merged_pub.publish(out)
 
 

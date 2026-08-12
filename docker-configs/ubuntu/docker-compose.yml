@@ -57,93 +57,14 @@ services:
       bash -c "source /ros2_ws/install/setup.bash &&
                ros2 launch webots_map_merge master.launch.py"
 
-  # 2. UGV1 독립 컨테이너
-  ugv1:
-    <<: *ros-common
-    container_name: ugv1_brain_ubuntu
-    environment:
-      - DISPLAY=${DISPLAY:-:0}
-      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-      - ROS_LOCALHOST_ONLY=0
-      - ROS_DOMAIN_ID=30
-      - ROBOT_ID=ugv1
-      # 🗺️ 맵 병합용 월드 절대 초기 위치 (my_world.wbt 스폰 좌표)
-      - ROBOT_INIT_X=-6.159
-      - ROBOT_INIT_Y=1.263
-      - ROBOT_INIT_YAW=-2.910
-    command: >
-      bash -c "source /ros2_ws/install/setup.bash &&
-               ros2 launch webots_python single_ugv.launch.py"
-    depends_on:
-      - master
-
-  # 3. UGV2 독립 컨테이너
-  ugv2:
-    <<: *ros-common
-    container_name: ugv2_brain_ubuntu
-    environment:
-      - DISPLAY=${DISPLAY:-:0}
-      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-      - ROS_LOCALHOST_ONLY=0
-      - ROS_DOMAIN_ID=30
-      - ROBOT_ID=ugv2
-      # 🗺️ 맵 병합용 월드 절대 초기 위치 (my_world.wbt 스폰 좌표)
-      - ROBOT_INIT_X=8.376
-      - ROBOT_INIT_Y=1.373
-      - ROBOT_INIT_YAW=-0.064
-    command: >
-      bash -c "source /ros2_ws/install/setup.bash &&
-               ros2 launch webots_python single_ugv.launch.py"
-    depends_on:
-      - master
-
-  # 4. Spot 독립 컨테이너
-  spot1:
-    <<: *ros-common
-    container_name: spot1_brain_ubuntu
-    environment:
-      - DISPLAY=${DISPLAY:-:0}
-      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-      - ROS_LOCALHOST_ONLY=0
-      - ROS_DOMAIN_ID=30
-      - ROBOT_ID=spot1
-      # 🗺️ 맵 병합용 월드 절대 초기 위치 (my_world.wbt 스폰 좌표)
-      # ⚠️ spot1 런치는 서브모듈이라 robot_registrar가 아직 안 붙어 있습니다.
-      #    지금은 마스터의 config/robots.yaml 값으로 병합됩니다. (MAP_MERGE.md 참고)
-      - ROBOT_INIT_X=-0.84
-      - ROBOT_INIT_Y=-0.34
-      - ROBOT_INIT_YAW=0.0
-    command: >
-      bash -c "source /ros2_ws/install/setup.bash &&
-               ros2 launch webots_spot single_spot_launch.py"
-    depends_on:
-      - master
-
-  # 5. 드론 독립 컨테이너
-  drone1:
-    <<: *ros-common
-    container_name: drone1_brain_ubuntu
-    environment:
-      - DISPLAY=${DISPLAY:-:0}
-      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-      - ROS_LOCALHOST_ONLY=0
-      - ROS_DOMAIN_ID=30
-      - ROBOT_ID=drone1
-      # 🗺️ 드론은 SLAM이 없어 맵 병합엔 참여하지 않지만, 위치는 알려둡니다.
-      - ROBOT_INIT_X=-6.5
-      - ROBOT_INIT_Y=5.5
-      - ROBOT_INIT_YAW=0.0
-    command: >
-      bash -c "source /ros2_ws/install/setup.bash &&
-               ros2 launch webots_python single_drone.launch.py"
-    depends_on:
-      - master
-
-  # 6. 로봇 소환 컨테이너 (fleet)
-  # 🤖 실행 중인 Webots에 로봇을 추가하고, 그 로봇의 뇌(driver/SLAM/Nav2)를
-  #    이 컨테이너 안에서 자식 프로세스로 띄웁니다. 위 1~5번처럼 로봇마다
-  #    컨테이너를 미리 정의해 둘 필요가 없습니다.
-  #      ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'drone', random: true}"
+  # 2. 편대 컨테이너 (fleet)
+  # 🤖 이 컨테이너가 편대 전체를 담당합니다. 기동하면 편대 매니페스트대로 Webots에
+  #    로봇을 소환하고, 각 로봇의 뇌(driver/SLAM/Nav2)를 자식 프로세스로 띄웁니다.
+  #    예전에는 로봇 1대 = 컨테이너 1개였습니다. 이제 로봇은 yaml 데이터입니다.
+  #      편대 바꾸기 : 아래 command 의 fleet:= 를 바꾸세요
+  #                   (config/fleet/ 안: default.yaml / random_squad.yaml / ugv_only.yaml)
+  #      자동 소환 끔: fleet:='' 로 두면 서비스 호출만 받습니다
+  #      런타임 추가 : ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'drone', random: true}"
   # 🌟 host.docker.internal 별칭은 위 x-ros-common의 extra_hosts에서 그대로 상속받습니다.
   # 🔁 restart 가 필요한 이유: Webots 에서 월드를 재로드(File > Reload World)하면
   #    extern 컨트롤러 연결이 끊기고 supervisor.step() 이 -1 을 돌려준다. 소환기는
@@ -164,6 +85,6 @@ services:
       - WEBOTS_PORT=1234
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
-               ros2 launch webots_robot_spawner spawner.launch.py"
+               ros2 launch webots_robot_spawner spawner.launch.py fleet:=default.yaml"
     depends_on:
       - master

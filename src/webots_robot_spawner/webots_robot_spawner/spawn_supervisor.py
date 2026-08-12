@@ -24,15 +24,29 @@ ROS 2 노드**다. 컨테이너에 Webots R2025a가 통째로 설치돼 있어(D
 
 import os
 import sys
+from dataclasses import dataclass
 
 import numpy as np
 import rclpy
 from rclpy.node import Node
 
 from webots_robot_spawner.brain_launcher import LocalProcessLauncher
+from webots_robot_spawner.fleet_loader import load_fleet
 from webots_robot_spawner.free_space_sampler import FreeSpaceSampler
 from webots_robot_spawner.robot_types import KNOWN_ROBOT_PROTOS, ROBOT_TYPES
 from webots_spawner_msgs.srv import SpawnRobot
+
+
+@dataclass
+class SpawnResult:
+    """소환 시도 하나의 결과. 서비스 응답과 편대 로그가 같은 값을 쓴다."""
+
+    success: bool
+    robot_id: str = ''
+    x: float = 0.0
+    y: float = 0.0
+    yaw: float = 0.0
+    message: str = ''
 
 
 class SpawnSupervisor(Node):
@@ -50,6 +64,11 @@ class SpawnSupervisor(Node):
         self.declare_parameter('brain_grace_period', 8.0)
         self.declare_parameter('log_dir', '/tmp/spawned_robots')
         self.declare_parameter('auto_launch_brain', True)
+        # 편대 매니페스트. 비우면 아무것도 자동 소환하지 않는다(서비스 호출만 받음).
+        self.declare_parameter('fleet_manifest', '')
+        # 매니페스트 소환을 시작하기 전 기다리는 시간(초). Webots 접속 직후 바로
+        # 밀어 넣으면 씬 트리가 아직 안정되지 않은 상태에서 삽입이 겹칠 수 있다.
+        self.declare_parameter('fleet_start_delay', 3.0)
 
         self._separation = float(self.get_parameter('robot_separation').value)
         self._attempts = int(self.get_parameter('sample_attempts').value)
@@ -73,6 +92,14 @@ class SpawnSupervisor(Node):
         self.get_logger().info(
             f'소환 준비 완료. 월드에 이미 있는 로봇 {len(found)}대: '
             f'{", ".join(sorted(n for n, _, _ in found)) or "없음"}')
+
+        # 편대 매니페스트가 있으면 잠시 뒤 한 번 소환한다.
+        manifest = str(self.get_parameter('fleet_manifest').value).strip()
+        if manifest:
+            delay = float(self.get_parameter('fleet_start_delay').value)
+            self.get_logger().info(f'편대 매니페스트 예약: {manifest} ({delay:.1f}초 후)')
+            self._fleet_timer = self.create_timer(delay, self._run_fleet_once)
+            self._fleet_manifest = manifest
 
     # ------------------------------------------------------------------ 씬 트리
 
@@ -104,68 +131,116 @@ class SpawnSupervisor(Node):
     # ------------------------------------------------------------------ 서비스
 
     def _on_spawn(self, request, response):
-        response.success = False
-        response.robot_id = ''
+        """서비스 껍데기. 실제 일은 spawn_one() 이 한다.
 
-        robot_type = ROBOT_TYPES.get(request.type.strip().lower())
+        편대 매니페스트(fleet_loader)도 같은 spawn_one() 을 쓴다. 경로가 갈리면
+        "서비스로는 되는데 매니페스트로는 안 되는" 차이가 생기기 때문이다.
+        """
+        result = self.spawn_one(
+            type_key=request.type,
+            robot_id=request.robot_id,
+            random_place=request.random,
+            x=request.x, y=request.y, yaw=request.yaw,
+            min_clearance=request.min_clearance,
+            force=request.force,
+        )
+        response.success = result.success
+        response.robot_id = result.robot_id
+        response.x, response.y, response.yaw = result.x, result.y, result.yaw
+        response.message = result.message
+        return response
+
+    # ------------------------------------------------------------------ 소환 코어
+
+    def spawn_one(self, type_key, robot_id='', random_place=False,
+                  x=0.0, y=0.0, yaw=0.0, min_clearance=0.0, force=False,
+                  bounds=None, strict_map=True) -> SpawnResult:
+        """로봇 한 대를 소환한다. 서비스와 편대 매니페스트가 공유하는 유일한 경로.
+
+        Args:
+            bounds: (xmin, ymin, xmax, ymax). random_place 일 때 이 사각형 안에서만
+                고른다. 월드에 로봇이 하나도 없는 냉시동에서는 SLAM 맵이 존재할 수
+                없으므로 이 경로가 필요하다.
+            strict_map: 좌표를 직접 지정한 경우, 맵 점유 검사 실패를 거절 사유로
+                볼지(True) 경고만 남기고 진행할지(False).
+                로봇끼리 겹치는 검사는 strict_map 과 무관하게 **항상** 막는다.
+
+                False 가 필요한 이유: 편대 매니페스트는 부팅 설정이다. 사람이 좌표를
+                골라 적어 둔 것이고, 실패해도 되물을 상대가 없다. 그런데 점유격자는
+                SLAM 파생물이라 낡을 수 있다 — 실제로 월드를 비우고 편대를 처음부터
+                올릴 때, 이전 세션 맵에 남은 "옛 로봇의 몸"이 장애물로 찍혀 있어서
+                원래 스폰 좌표 4곳이 전부 거절됐다. 낡은 파생 데이터 때문에 편대가
+                아예 안 뜨는 것보다, 경고를 남기고 띄우는 편이 낫다.
+                반대로 서비스(/spawn_robot)는 사람이 지켜보는 대화형 경로라
+                엄격하게 두고 force 로 강행할 수 있게 한다.
+        """
+        robot_type = ROBOT_TYPES.get(str(type_key).strip().lower())
         if robot_type is None:
-            response.message = (
-                f"모르는 로봇 종류 '{request.type}'. "
-                f"가능한 값: {', '.join(sorted(ROBOT_TYPES))}")
-            self.get_logger().warn(response.message)
-            return response
+            msg = (f"모르는 로봇 종류 '{type_key}'. "
+                   f"가능한 값: {', '.join(sorted(ROBOT_TYPES))}")
+            self.get_logger().warn(msg)
+            return SpawnResult(False, message=msg)
 
         if not robot_type.ready:
-            response.message = robot_type.not_ready_reason
-            self.get_logger().warn(f'[{robot_type.key}] {response.message}')
-            return response
+            self.get_logger().warn(f'[{robot_type.key}] {robot_type.not_ready_reason}')
+            return SpawnResult(False, message=robot_type.not_ready_reason)
 
         existing = self._scan_robots()
         existing_names = {name for name, _, _ in existing}
 
         # 이름 정하기 --------------------------------------------------
-        robot_id = request.robot_id.strip()
+        robot_id = str(robot_id).strip()
         if not robot_id:
             robot_id = self._allocate_id(robot_type, existing_names)
         elif robot_id in existing_names:
-            response.message = f"이미 '{robot_id}'라는 로봇이 월드에 있습니다"
-            self.get_logger().warn(response.message)
-            return response
+            msg = f"이미 '{robot_id}'라는 로봇이 월드에 있습니다"
+            self.get_logger().warn(msg)
+            return SpawnResult(False, robot_id=robot_id, message=msg)
 
         # 자리 정하기 --------------------------------------------------
-        clearance = request.min_clearance or robot_type.default_clearance
-        avoid = [(x, y, self._separation) for _, x, y in existing]
+        clearance = float(min_clearance) or robot_type.default_clearance
+        avoid = [(rx, ry, self._separation) for _, rx, ry in existing]
 
-        if request.random:
+        if random_place:
             spot, reason = self._sampler.sample(
-                clearance, avoid=avoid, attempts=self._attempts, rng=self._rng)
+                clearance, avoid=avoid, attempts=self._attempts, rng=self._rng,
+                bounds=bounds)
             if spot is None:
-                response.message = f'빈 자리를 찾지 못했습니다: {reason}'
-                self.get_logger().warn(response.message)
-                return response
+                msg = f'빈 자리를 찾지 못했습니다: {reason}'
+                self.get_logger().warn(msg)
+                return SpawnResult(False, robot_id=robot_id, message=msg)
             x, y = spot
             yaw = float(self._rng.uniform(-np.pi, np.pi))
         else:
-            x, y, yaw = float(request.x), float(request.y), float(request.yaw)
-            ok, reason = self._sampler.check(x, y, clearance, avoid=avoid)
-            if not ok:
-                if not request.force:
-                    response.message = (
-                        f'({x:.2f}, {y:.2f})에 놓을 수 없습니다: {reason}. '
-                        'force: true로 강행할 수 있습니다.')
-                    self.get_logger().warn(response.message)
-                    return response
+            x, y, yaw = float(x), float(y), float(yaw)
+
+            # 로봇 겹침은 어떤 경우에도 막는다(force 만 예외). 겹쳐 놓으면 물리가
+            # 서로를 밀어내며 둘 다 엉뚱한 곳으로 간다.
+            ok, reason = self._sampler.check_robots(x, y, clearance, avoid=avoid)
+            if not ok and not force:
+                msg = (f'({x:.2f}, {y:.2f})에 놓을 수 없습니다: {reason}. '
+                       'force: true로 강행할 수 있습니다.')
+                self.get_logger().warn(msg)
+                return SpawnResult(False, robot_id=robot_id, message=msg)
+
+            # 맵 점유 검사는 strict_map 에 따라 거절 사유이거나 경고다.
+            map_ok, map_reason = self._sampler.check_map(x, y, clearance)
+            if not map_ok:
+                if strict_map and not force:
+                    msg = (f'({x:.2f}, {y:.2f})에 놓을 수 없습니다: {map_reason}. '
+                           'force: true로 강행할 수 있습니다.')
+                    self.get_logger().warn(msg)
+                    return SpawnResult(False, robot_id=robot_id, message=msg)
                 self.get_logger().warn(
-                    f'[{robot_id}] 검사 실패({reason})지만 force=true라 강행합니다')
+                    f'[{robot_id}] 맵 검사 실패({map_reason})지만 그대로 진행합니다')
 
         # 몸 넣기 ------------------------------------------------------
         node = self._insert_node(robot_type, robot_id, x, y, yaw)
         if node is None:
-            response.message = (
-                f'Webots 씬 트리 삽입에 실패했습니다. '
-                f'{robot_type.proto}가 월드에 EXTERNPROTO로 선언돼 있는지 확인하세요.')
-            self.get_logger().error(response.message)
-            return response
+            msg = (f'Webots 씬 트리 삽입에 실패했습니다. {robot_type.proto}가 월드에 '
+                   'IMPORTABLE EXTERNPROTO로 선언돼 있는지 확인하세요.')
+            self.get_logger().error(msg)
+            return SpawnResult(False, robot_id=robot_id, message=msg)
 
         self.get_logger().info(
             f'[{robot_id}] 몸 삽입 완료: {robot_type.proto} '
@@ -179,20 +254,62 @@ class SpawnSupervisor(Node):
             except Exception as exc:                      # noqa: BLE001
                 # 뇌를 못 띄웠으면 몸만 남는다. 그대로 두면 유령 로봇이 쌓이므로 되돌린다.
                 node.remove()
-                response.message = f'뇌 실행에 실패해 몸을 되돌렸습니다: {exc}'
-                self.get_logger().error(response.message)
-                return response
+                msg = f'뇌 실행에 실패해 몸을 되돌렸습니다: {exc}'
+                self.get_logger().error(msg)
+                return SpawnResult(False, robot_id=robot_id, message=msg)
             self._arm_rollback(robot_id)
 
         self._spawned[robot_id] = (node, handle)
 
-        response.success = True
-        response.robot_id = robot_id
-        response.x, response.y, response.yaw = x, y, yaw
-        response.message = (
-            f'{robot_id} 소환 완료 ({x:.2f}, {y:.2f}, yaw {yaw:.2f})'
-            + ('' if self._auto_brain else ' — 뇌는 직접 띄우세요(auto_launch_brain=false)'))
-        return response
+        return SpawnResult(
+            True, robot_id=robot_id, x=x, y=y, yaw=yaw,
+            message=(f'{robot_id} 소환 완료 ({x:.2f}, {y:.2f}, yaw {yaw:.2f})'
+                     + ('' if self._auto_brain
+                        else ' — 뇌는 직접 띄우세요(auto_launch_brain=false)')))
+
+    def attach_brain(self, type_key, robot_id) -> SpawnResult:
+        """이미 몸이 있는 로봇에 뇌만 붙인다.
+
+        fleet 컨테이너가 재시작되면(월드 재로드 등) 소환기가 추적하던 뇌 목록이
+        비는데 Webots 안의 몸은 그대로 남아 있을 수 있다. 그때 몸을 또 만들면
+        이름이 충돌하므로, 뇌만 다시 띄운다.
+        """
+        robot_type = ROBOT_TYPES.get(str(type_key).strip().lower())
+        if robot_type is None:
+            return SpawnResult(False, robot_id=robot_id,
+                               message=f"모르는 로봇 종류 '{type_key}'")
+
+        for name, x, y in self._scan_robots():
+            if name != robot_id:
+                continue
+            if not self._auto_brain:
+                return SpawnResult(True, robot_id=robot_id, x=x, y=y,
+                                   message='몸만 확인 (auto_launch_brain=false)')
+            try:
+                handle = self._launcher.launch(robot_id, robot_type, x, y, 0.0)
+            except Exception as exc:                      # noqa: BLE001
+                msg = f'뇌 실행 실패: {exc}'
+                self.get_logger().error(f'[{robot_id}] {msg}')
+                return SpawnResult(False, robot_id=robot_id, message=msg)
+            # 몸은 우리가 만든 게 아니므로 롤백 대상이 아니다. 노드는 기록만 해 둔다.
+            self._spawned[robot_id] = (None, handle)
+            return SpawnResult(True, robot_id=robot_id, x=x, y=y,
+                               message=f'{robot_id} 몸이 이미 있어 뇌만 붙였습니다')
+
+        return SpawnResult(False, robot_id=robot_id,
+                           message=f'{robot_id} 의 몸을 씬 트리에서 못 찾았습니다')
+
+    # ------------------------------------------------------------------ 편대
+
+    def _run_fleet_once(self):
+        """편대 매니페스트를 딱 한 번 처리한다."""
+        self.destroy_timer(self._fleet_timer)
+        try:
+            load_fleet(self, self._fleet_manifest)
+        except Exception as exc:                          # noqa: BLE001
+            # 편대 소환이 실패해도 노드는 살아 있어야 한다. 서비스로 수동 소환은
+            # 계속 되어야 하고, 여기서 죽으면 컨테이너가 재시작 루프에 빠진다.
+            self.get_logger().error(f'편대 소환 중 오류: {exc}')
 
     # ------------------------------------------------------------------ 삽입/롤백
 

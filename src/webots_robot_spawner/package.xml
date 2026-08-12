@@ -11,6 +11,8 @@
   <depend>nav_msgs</depend>
   <depend>webots_spawner_msgs</depend>
   <depend>python3-numpy</depend>
+  <!-- 편대 매니페스트(config/fleet/*.yaml) 파싱 -->
+  <depend>python3-yaml</depend>
 
   <!-- 소환한 로봇의 뇌를 띄우는 데 쓰는 런치들 -->
   <exec_depend>launch</exec_depend>

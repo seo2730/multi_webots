@@ -14,6 +14,9 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        # 편대 매니페스트. 여기 파일을 추가하면 fleet:= 인자로 바로 고를 수 있다.
+        (os.path.join('share', package_name, 'config', 'fleet'),
+            glob('config/fleet/*.yaml')),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
     ],
     install_requires=['setuptools'],
