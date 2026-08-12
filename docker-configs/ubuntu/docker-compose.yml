@@ -138,3 +138,27 @@ services:
                ros2 launch webots_python single_drone.launch.py"
     depends_on:
       - master
+
+  # 6. 로봇 소환 컨테이너 (fleet)
+  # 🤖 실행 중인 Webots에 로봇을 추가하고, 그 로봇의 뇌(driver/SLAM/Nav2)를
+  #    이 컨테이너 안에서 자식 프로세스로 띄웁니다. 위 1~5번처럼 로봇마다
+  #    컨테이너를 미리 정의해 둘 필요가 없습니다.
+  #      ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'drone', random: true}"
+  # 🌟 host.docker.internal 별칭은 위 x-ros-common의 extra_hosts에서 그대로 상속받습니다.
+  fleet:
+    <<: *ros-common
+    container_name: fleet_spawner_ubuntu
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - ROS_LOCALHOST_ONLY=0
+      - ROS_DOMAIN_ID=30
+      # Webots가 도는 호스트. 소환기와 소환된 로봇의 뇌가 모두 이 값을 씁니다.
+      - WEBOTS_HOST=host.docker.internal
+      - WEBOTS_PORT=1234
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 launch webots_robot_spawner spawner.launch.py"
+    depends_on:
+      - master

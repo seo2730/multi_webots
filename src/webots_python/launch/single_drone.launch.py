@@ -17,7 +17,18 @@ import xacro
 
 def generate_launch_description():
     # 🌟 docker-compose에서 주입한 환경 변수 읽어오기 (기본값: drone1)
+    #
+    # 소환된 드론(webots_robot_spawner)도 같은 경로로 들어온다. 소환기가 자식 프로세스의
+    # 환경 변수에 ROBOT_ID / ROBOT_INIT_* 를 넣어 주므로 이 런치 파일은 정적으로 뜬
+    # drone1인지 런타임에 소환된 drone2인지 구분할 필요가 없다.
+    #   손으로 띄워 볼 때:  ROBOT_ID=drone2 ros2 launch webots_python single_drone.launch.py
     ns = os.environ.get('ROBOT_ID', 'drone1')
+
+    # Webots가 도는 호스트. 리눅스 네이티브 Docker에는 host.docker.internal이 기본으로
+    # 없어 compose의 extra_hosts로 별칭을 만들지만, 그 방법을 못 쓰는 환경(원격 PC의
+    # Webots에 붙는 경우 등)을 위해 환경 변수로도 바꿀 수 있게 열어 둔다.
+    webots_host = os.environ.get('WEBOTS_HOST', 'host.docker.internal')
+    webots_port = os.environ.get('WEBOTS_PORT', '1234')
 
     webots_pkg_dir = get_package_share_directory('webots_python')
     urdf_path = os.path.join(webots_pkg_dir, 'urdf', 'Mavic2ProMedium.urdf.xacro')
@@ -46,12 +57,19 @@ def generate_launch_description():
         package='webots_ros2_driver',
         executable='driver',
         name=f'{ns}',
-        additional_env={'WEBOTS_CONTROLLER_URL': f'tcp://host.docker.internal:1234/{ns}'},
+        additional_env={'WEBOTS_CONTROLLER_URL': f'tcp://{webots_host}:{webots_port}/{ns}'},
         parameters=[{
             'robot_description': robot_description,
             'use_sim_time': True,
             'set_robot_state_publisher': False,  # 🚨 필수
-            'synchronization': True,             # 자세 루프가 매 스텝 돌아야 한다
+            # 자세 루프가 매 스텝 돌아야 하므로 기본은 동기화(True)다.
+            #
+            # 다만 **Webots 노드의 synchronization 필드와 값이 같아야 한다.**
+            # 소환된 로봇(webots_robot_spawner)은 노드가 synchronization FALSE로 들어간다.
+            # 뇌가 붙기 전까지 시뮬레이션 전체가 멈춰버리는 것을 막기 위해서다
+            # (robot_types.spawn_string 주석 참고). 그래서 소환기는 이 환경 변수를
+            # 'false'로 넣어 양쪽을 맞춘다. 정적으로 뜨는 drone1은 기본값 그대로 True.
+            'synchronization': os.environ.get('ROBOT_SYNCHRONIZATION', 'true').lower() != 'false',
         }],
         remappings=[
             ('/tf', '/tf'),

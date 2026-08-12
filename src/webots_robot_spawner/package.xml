@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>webots_robot_spawner</name>
+  <version>0.0.0</version>
+  <description>실행 중인 Webots 시뮬레이션에 로봇을 원하는 위치 또는 맵의 빈 공간에 소환</description>
+  <maintainer email="seo2730@naver.com">root</maintainer>
+  <license>TODO: License declaration</license>
+
+  <depend>rclpy</depend>
+  <depend>nav_msgs</depend>
+  <depend>webots_spawner_msgs</depend>
+  <depend>python3-numpy</depend>
+
+  <!-- 소환한 로봇의 뇌를 띄우는 데 쓰는 런치들 -->
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>webots_python</exec_depend>
+  <exec_depend>webots_map_merge</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

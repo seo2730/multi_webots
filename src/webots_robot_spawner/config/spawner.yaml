@@ -1,0 +1,34 @@
+# 로봇 소환 설정 (fleet 컨테이너 전용)
+#
+# 노드 이름 대신 와일드카드(/**)를 쓴다. webots_map_merge/config/robots.yaml과 같은 방식.
+/**:
+  ros__parameters:
+    # 🕐 use_sim_time을 켜지 않는 것이 의도다.
+    #    이 노드는 타임스탬프가 붙는 데이터를 발행하지 않고, 대신 "뇌가 몇 초 안에
+    #    떴는가"를 실제 시간으로 재야 한다. 시뮬을 일시정지하면 sim time이 멈춰
+    #    롤백 감시가 영원히 안 돌게 된다.
+    use_sim_time: false
+
+    # 빈 자리를 고를 때 볼 맵. map_merger가 발행하는 전역 병합 맵.
+    map_topic: /map_merged
+
+    # 미탐색(-1) 영역에도 놓을지. false면 "SLAM이 비었다고 확인한 곳"에만 놓는다.
+    # 아직 아무도 안 가본 곳에 떨구고 싶으면 true로 바꾼다 (벽 속에 낄 위험을 감수).
+    allow_unknown: false
+
+    # 무작위 자리 찾기 시도 횟수. 맵이 좁고 로봇이 많을수록 올린다.
+    sample_attempts: 200
+
+    # 로봇끼리 최소 이격(m). 요청한 clearance에 이 값을 더해 검사한다.
+    robot_separation: 1.0
+
+    # 뇌를 띄운 뒤 이 시간(초) 안에 프로세스가 죽으면 몸을 씬 트리에서 되돌린다.
+    # 런치 파일 오류로 시뮬에 유령 로봇이 쌓이는 것을 막는 장치.
+    brain_grace_period: 8.0
+
+    # 소환된 로봇별 로그 위치. 한 컨테이너에서 여러 뇌가 돌아 표준출력이 섞이므로
+    # 로봇마다 파일을 나눈다. 문제가 생기면 여기부터 본다.
+    log_dir: /tmp/spawned_robots
+
+    # false면 Webots에 몸만 넣고 뇌는 안 띄운다. 몸만 들어가는지 확인할 때 쓴다.
+    auto_launch_brain: true
