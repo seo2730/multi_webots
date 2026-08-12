@@ -19,6 +19,13 @@ world -> {ns}/map 이 항등변환이라(MAP_MERGE.md 2장) 좌표 정합이라�
         src/webots_robot_spawner/scripts/gen_world_from_map.py \\
         --map maps/scan.yaml --name scan_world
 
+    ⚠️ 현재 경로를 넘기는 문법이 셸마다 다르다. 아래는 전부 같은 뜻이다.
+         cmd.exe      -v "%cd%:/w"      (줄 연결은 ^)
+         PowerShell   -v "${PWD}:/w"    (줄 연결은 백틱)
+         Git Bash 등  -v "$PWD:/w"      (줄 연결은 역슬래시)
+       헷갈리면 절대경로를 그냥 적는 편이 확실하다 — 어느 셸에서든 동작한다:
+         -v "D:/path/to/webots_multi_robot:/w"
+
 잃는 것을 알고 써야 한다:
   의미   의자도 소파도 냉장고도 전부 무명 박스가 된다
   높이   점유격자는 2D 다. --height 로 가정할 수밖에 없다

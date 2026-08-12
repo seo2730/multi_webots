@@ -598,7 +598,14 @@ ugv3 (런타임 소환된 몸) ←TCP→ 이 뇌만 fleet 컨테이너가 띄운
 compose는 매니페스트에서 생성한다. 손으로 유지하면 매니페스트와 이중 관리가 된다:
 
 ```bash
+# Git Bash / Linux / macOS
 docker run --rm -v "$PWD:/w" -w /w windows-master \
+  python3 src/webots_robot_spawner/scripts/gen_fleet_compose.py --fleet default.yaml
+```
+```powershell
+# PowerShell — ${PWD} 로 감싸야 함. "$PWD:/w" 는 PowerShell 이 $PWD: 를
+# 드라이브 한정 변수로 읽어서 확장에 실패한다.
+docker run --rm -v "${PWD}:/w" -w /w windows-master `
   python3 src/webots_robot_spawner/scripts/gen_fleet_compose.py --fleet default.yaml
 ```
 
@@ -609,6 +616,56 @@ docker run --rm -v "$PWD:/w" -w /w windows-master \
   등록해서 마스터 입장에선 구분되지 않는다 ([MAP_MERGE.md](MAP_MERGE.md) 참고)
 - Docker 소켓을 쓰는 방식은 **일부러 만들지 않았다.** 소켓 경로가 플랫폼마다 달라
   (Linux 유닉스 소켓 / Windows 네임드 파이프 / Mac Desktop VM) 크로스 플랫폼 전제가 깨진다.
+
+### 12-2-1. 새 월드를 만들어 편대를 올리기까지
+
+월드를 얻는 방법이 세 가지다. 어느 쪽이든 **`spawn_supervisor` 노드와 래퍼 PROTO의
+`IMPORTABLE` 선언**이 들어가야 소환이 되는데, 세 스크립트가 같은 `prepare()` 로직을
+공유하므로 신경 쓸 필요는 없다.
+
+| 스크립트 | 용도 |
+|---|---|
+| [gen_world.py](src/webots_robot_spawner/scripts/gen_world.py) | 넓은 작전 지역을 처음부터 생성 (창고형) |
+| [gen_world_from_map.py](src/webots_robot_spawner/scripts/gen_world_from_map.py) | SLAM 맵·건물 도면(점유격자) → 월드 |
+| [prepare_world.py](src/webots_robot_spawner/scripts/prepare_world.py) | 밖에서 가져온 `.wbt`를 소환 가능 상태로 |
+
+**① 월드 생성** — 편대 매니페스트가 **같이** 나온다. 생성기는 어디가 비었는지 알기
+때문에 좌표까지 써준다 (손으로 고르면 선반 안에 로봇을 놓기 쉽다).
+
+```powershell
+docker run --rm -v "${PWD}:/w" -w /w windows-master python3 `
+  src/webots_robot_spawner/scripts/gen_world.py --size 150 --name arena150
+```
+→ `worlds/arena150.wbt` + `config/fleet/arena150.yaml`
+
+**② compose를 그 편대에 맞추기** — 로봇 서비스와 `fleet:=` 값이 한꺼번에 맞춰진다.
+
+```powershell
+docker run --rm -v "${PWD}:/w" -w /w windows-master python3 `
+  src/webots_robot_spawner/scripts/gen_fleet_compose.py --fleet arena150.yaml
+```
+
+> 🚨 ②를 건너뛰면 **조용히 어긋난다.** 소환기는 새 편대를, 로봇 컨테이너는 옛 이름을
+> 쓰게 된다. 그래서 생성기가 두 곳을 한 번에 고친다.
+
+**③ Webots에서 월드 열기** — `File > Open World...` → `worlds/arena150.wbt`
+
+**④ 컨테이너 기동**
+```bash
+docker compose -f docker-configs/windows/docker-compose.yml up -d
+```
+
+편대가 뜨기까지 30초쯤 걸린다. `fleet_start_delay`가 20초라 느린 게 아니라
+[기동 순서](#12-3-1-기동-순서-왜-드론만-다른가)를 지키는 중이다.
+
+**재빌드가 필요한 때 / 아닌 때**
+
+| 바꾼 것 | 필요한 조치 |
+|---|---|
+| 월드 `.wbt` | 없음 — Webots가 호스트에서 직접 읽는다 |
+| 편대 매니페스트 | 컨테이너 재시작 (마운트되어 있다) |
+| compose 서비스 구성 | `up -d` |
+| 파이썬 소스 (드라이버·소환기) | `build` 후 `up -d` |
 
 ### 12-3-1. 기동 순서 (왜 드론만 다른가)
 

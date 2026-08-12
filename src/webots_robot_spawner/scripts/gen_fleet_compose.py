@@ -28,6 +28,13 @@
 
 실행 (호스트에 파이썬이 없어도 되게 도커로 돌린다 — 크로스 플랫폼 전제):
 
+    ⚠️ 현재 경로를 넘기는 문법이 셸마다 다르다. 아래는 전부 같은 뜻이다.
+         cmd.exe      -v "%cd%:/w"      (줄 연결은 ^)
+         PowerShell   -v "${PWD}:/w"    (줄 연결은 백틱)
+         Git Bash 등  -v "$PWD:/w"      (줄 연결은 역슬래시)
+       헷갈리면 절대경로를 그냥 적는 편이 확실하다 — 어느 셸에서든 동작한다:
+         -v "D:/path/to/webots_multi_robot:/w"
+
     docker run --rm -v "$PWD:/w" -w /w python:3.11-slim \\
         python3 src/webots_robot_spawner/scripts/gen_fleet_compose.py --fleet default.yaml
 

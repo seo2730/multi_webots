@@ -25,6 +25,13 @@
 
 실행 (호스트에 파이썬이 없어도 되게 도커로 돌린다):
 
+    ⚠️ 현재 경로를 넘기는 문법이 셸마다 다르다. 아래는 전부 같은 뜻이다.
+         cmd.exe      -v "%cd%:/w"      (줄 연결은 ^)
+         PowerShell   -v "${PWD}:/w"    (줄 연결은 백틱)
+         Git Bash 등  -v "$PWD:/w"      (줄 연결은 역슬래시)
+       헷갈리면 절대경로를 그냥 적는 편이 확실하다 — 어느 셸에서든 동작한다:
+         -v "D:/path/to/webots_multi_robot:/w"
+
     docker run --rm -v "$PWD:/w" -w /w windows-master python3 \\
         src/webots_robot_spawner/scripts/gen_world.py --size 100 --name warehouse100
 
@@ -34,7 +41,12 @@
       --aisle W       통로 폭(m). 기본 4.0 — UGV 폭 0.72 + Nav2 여유
       --shelf-h H     선반 높이(m). 기본 3.0
       --no-fleet      편대 매니페스트를 만들지 않는다
-      --seed N        기둥/선반 배치 난수 시드 (같은 시드 = 같은 월드)
+      --seed N        편대 배치 후보 좌표를 흔드는 난수 시드
+
+⚠️ 지금 **배치 자체는 무작위가 아니다.** 크기와 통로 폭이 같으면 선반과 기둥은 항상
+   같은 자리에 놓인다. --seed 는 편대 배치 후보를 몇 십 cm 흔드는 데만 쓰인다.
+   진짜 무작위 환경(방/복도 생성, 장애물 산포)이 필요하면 build() 의 좌표 계산만
+   바꾸면 된다 — solid() 와 파일 쓰기는 그대로 쓸 수 있다.
 """
 
 import argparse
