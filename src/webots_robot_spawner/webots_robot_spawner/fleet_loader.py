@@ -117,10 +117,29 @@ def load_fleet(node, path: str):
 
             if robot_id and robot_id in {r for r, _, _ in node._scan_robots()}:
                 if not manifest_brains:
-                    # 뇌가 로봇별 컨테이너에 있으면 우리는 그 뇌의 생사를 모른다.
-                    # 여기서 몸을 지우면 **정상 동작 중인 외부 드라이버의 연결을 끊는다.**
-                    # 그러니 이미 있는 몸은 손대지 않는다.
-                    attached.append((label, f'{robot_id} 몸이 이미 있어 그대로 둡니다'))
+                    # 뇌가 로봇별 컨테이너에 있으면 프로세스 핸들이 없어 생사를
+                    # 직접 모른다. 대신 /robot_registry 에 그 이름이 보였는지로 가른다.
+                    #
+                    #  - 보였다  = 뇌가 살아 있다 -> 몸을 지우면 그 드라이버의 연결이
+                    #              끊기고 ros2 launch 가 되살리지 않는다. 그대로 둔다.
+                    #  - 안 보였다 = 지난 세션의 잔여 몸. Webots 를 켠 채 compose 를
+                    #              내리면 이렇게 남는다. 지우고 새로 소환한다.
+                    live = getattr(node, 'live_registrations', set())
+                    policy = getattr(node, 'stale_body_policy', 'recreate')
+                    if policy == 'recreate' and robot_id not in live:
+                        result = node.reclaim(entry['type'], robot_id, **spawn_kwargs)
+                        if result.success:
+                            made.append((result.robot_id, result.x, result.y))
+                        else:
+                            failed.append((label, result.message))
+                        continue
+                    # 살아 있는(또는 adopt 정책) 몸은 손대지 않는다. 단 needs_sync
+                    # 로봇의 동기화 예약은 걸어야 한다 (adopt_existing 주석 참고).
+                    result = node.adopt_existing(entry['type'], robot_id)
+                    if result.success:
+                        attached.append((label, result.message))
+                    else:
+                        failed.append((label, result.message))
                     continue
                 # 뇌를 우리가 띄우는 경우: 살아 있으면 두고, 몸만 남은 것이면
                 # 지우고 새로 소환한다 (뇌만 다시 붙이면 센서가 죽는다 — reclaim() 주석)

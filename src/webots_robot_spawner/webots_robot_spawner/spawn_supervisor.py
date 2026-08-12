@@ -94,6 +94,30 @@ class SpawnSupervisor(Node):
         # 매니페스트에 없는 로봇은 기다려 줄 컨테이너가 없기 때문이다.
         self.declare_parameter('manifest_brains', True)
         self.declare_parameter('registry_topic', '/robot_registry')
+        # 편대를 올릴 때 월드에 이미 있는 몸을 어떻게 할지.
+        #   recreate : 뇌가 붙어 있지 않은 몸은 지우고 새로 소환한다 (기본)
+        #   adopt    : 있는 그대로 쓴다
+        #
+        # Webots 를 켠 채 docker compose 를 내리면 로봇의 몸은 월드에 남는다.
+        # 다시 올렸을 때 그 몸을 그냥 쓰면 지난 세션의 잔여물을 물려받는 셈이라
+        # 기본은 새로 만드는 쪽이다.
+        #
+        # 다만 **뇌가 살아 있는 몸은 절대 지우지 않는다.** 지우면 정상 동작 중인
+        # 드라이버의 연결이 끊기고, ros2 launch 가 그 노드를 되살리지 않아 로봇이
+        # 뇌 없이 남는다. 살아있는지는 /robot_registry 로 판단한다 — 각 로봇의
+        # robot_registrar 가 1Hz 로 자기 이름을 보내고 QoS 가 TRANSIENT_LOCAL 이라
+        # 늦게 구독해도 최근 명함을 받는다. 반대로 죽은 registrar 의 명함은
+        # 전달되지 않으므로 "잔여 몸"과 "살아있는 로봇"이 정확히 갈린다.
+        self.declare_parameter('stale_body_policy', 'recreate')
+        # 편대 처리가 끝나면 만드는 파일. compose 의 healthcheck 가 이걸 보고
+        # 로봇별 컨테이너를 풀어 준다.
+        #
+        # 이게 없으면 경합이 생긴다. depends_on: fleet 은 fleet 의 **기동**만
+        # 기다리고 소환 완료는 기다리지 않는다. 실측: 드론 드라이버가 옛 몸에
+        # 접속(t=26s)한 직후 소환기가 그 몸을 잔여물로 판단해 제거(t=38s)했고,
+        # 드라이버는 연결이 끊겨 종료했다. ros2 launch 가 그 노드를 되살리지 않아
+        # 드론이 뇌 없이 남았다.
+        self.declare_parameter('ready_file', '/tmp/fleet_ready')
 
         self._separation = float(self.get_parameter('robot_separation').value)
         self._attempts = int(self.get_parameter('sample_attempts').value)
@@ -110,6 +134,16 @@ class SpawnSupervisor(Node):
 
         self._rng = np.random.default_rng()
         self.manifest_brains = bool(self.get_parameter('manifest_brains').value)
+        self.stale_body_policy = str(
+            self.get_parameter('stale_body_policy').value).strip().lower()
+        if self.stale_body_policy not in ('recreate', 'adopt'):
+            self.get_logger().warn(
+                f"stale_body_policy '{self.stale_body_policy}' 를 모르겠습니다. "
+                "'recreate' 로 진행합니다 (가능한 값: recreate | adopt)")
+            self.stale_body_policy = 'recreate'
+
+        # /robot_registry 에서 본 로봇 이름들 = 뇌가 살아 있는 로봇들.
+        self.live_registrations = set()
 
         # robot_id -> (webots node, BrainHandle 또는 None, RobotType)
         # RobotType 을 같이 들고 있는 이유: 뇌 접속 확인 뒤에 그 로봇이 동기화를
@@ -132,6 +166,14 @@ class SpawnSupervisor(Node):
             f'소환 준비 완료. 월드에 이미 있는 로봇 {len(found)}대: '
             f'{", ".join(sorted(n for n, _, _ in found)) or "없음"}')
 
+        # 🚨 첫 step() 을 밟기 전에 해야 한다. 아래 참고.
+        self._unfreeze_leftovers()
+
+        # 편대 처리 전에는 준비 표시를 지운다. 지난 세션의 파일이 남아 있으면
+        # 로봇별 컨테이너가 몸이 생기기도 전에 풀려 버린다.
+        self._ready_file = str(self.get_parameter('ready_file').value).strip()
+        self._clear_ready()
+
         # 편대 매니페스트가 있으면 잠시 뒤 한 번 소환한다.
         manifest = str(self.get_parameter('fleet_manifest').value).strip()
         if manifest:
@@ -139,6 +181,9 @@ class SpawnSupervisor(Node):
             self.get_logger().info(f'편대 매니페스트 예약: {manifest} ({delay:.1f}초 후)')
             self._fleet_timer = self.create_timer(delay, self._run_fleet_once)
             self._fleet_manifest = manifest
+        else:
+            # 자동 소환이 없으면 기다릴 것도 없다.
+            self._mark_ready()
 
     # ------------------------------------------------------------------ 씬 트리
 
@@ -160,6 +205,45 @@ class SpawnSupervisor(Node):
             pos = node.getPosition()
             robots.append((name_field.getSFString(), pos[0], pos[1]))
         return robots
+
+    def _unfreeze_leftovers(self):
+        """월드에 남아 있는 몸들의 synchronization 을 전부 FALSE 로 내린다.
+
+        이게 없으면 **교착**에 빠진다. 실제로 겪은 순서는 이렇다.
+
+          1. 드론 몸은 비행을 위해 synchronization TRUE 로 올라가 있다
+          2. docker compose down — 드론의 뇌가 사라진다. 몸은 월드에 남는다
+          3. Webots 는 동기화된 extern 컨트롤러를 기다리며 **시뮬을 멈춘다**
+          4. compose up — 소환기가 붙지만 step() 이 막혀 편대 처리를 못 한다
+          5. 준비 파일이 안 생겨 healthcheck 가 실패하고, 로봇별 컨테이너가 안 뜬다
+          6. 그래서 드론의 뇌도 영영 안 붙는다 -> 4 로 돌아간다
+
+        우리가 막 접속한 시점에 동기화된 몸이 있다는 건 곧 "기다려 줄 뇌가 없는
+        잔여물"이라는 뜻이다. 그래서 전부 내린다. 필요한 로봇은 뇌가 붙은 뒤
+        _enable_sync_if_needed 가 다시 올려 준다.
+
+        첫 step() 전에 불러야 한다. step() 이 이미 막히면 손쓸 수 없다.
+        """
+        released = []
+        for i in range(self._root_children.getCount()):
+            node = self._root_children.getMFNode(i)
+            if node is None or node.getTypeName() not in KNOWN_ROBOT_PROTOS:
+                continue
+            field = node.getField('synchronization')
+            if field is None or not bool(field.getSFBool()):
+                continue
+            name_field = node.getField('name')
+            name = name_field.getSFString() if name_field else '?'
+            try:
+                field.setSFBool(False)
+                released.append(name)
+            except Exception as exc:                      # noqa: BLE001
+                self.get_logger().warn(f'[{name}] 동기화 해제 실패: {exc}')
+
+        if released:
+            self.get_logger().warn(
+                f'동기화된 잔여 몸 {len(released)}대의 synchronization 을 내렸습니다: '
+                f'{", ".join(sorted(released))} — 기다려 줄 뇌가 없어 시뮬이 멈추기 때문입니다')
 
     def _allocate_id(self, robot_type, existing_names):
         index = 1
@@ -315,6 +399,58 @@ class SpawnSupervisor(Node):
             message=(f'{robot_id} 소환 완료 ({x:.2f}, {y:.2f}, yaw {yaw:.2f})'
                      + ('' if want_brain else ' — 몸만 만들었습니다(뇌는 외부 담당)')))
 
+    def adopt_existing(self, type_key, robot_id) -> SpawnResult:
+        """이미 월드에 있는 몸을 그대로 인정하고, 필요한 뒷정리만 한다.
+
+        뇌를 로봇별 컨테이너가 담당하는 구성(manifest_brains=false)에서, 몸이 이미
+        있으면 손대지 않는 것이 맞다 — 지우면 정상 동작 중인 외부 드라이버의 연결이
+        끊긴다. 그런데 **아무것도 안 하면 안 되는 것이 하나 있다.**
+
+        needs_sync 로봇(드론)은 주입될 때 synchronization FALSE 로 들어갔고, 누군가
+        TRUE 로 되돌려 줘야 한다. 새로 소환하는 경로에서는 spawn_one 이 그 예약을
+        걸지만, 몸을 건너뛰면 그 경로를 안 타서 **드론이 영원히 비동기로 남는다.**
+        (실측: 드라이버 쪽만 ROBOT_SYNCHRONIZATION=true 인 반쪽 상태가 됐다.)
+
+        그래서 여기서 예약을 걸어 준다. 외부 뇌가 /robot_registry 에 등록되면
+        _on_registry 가 동기화를 되돌린다.
+        """
+        robot_type = ROBOT_TYPES.get(str(type_key).strip().lower())
+        if robot_type is None:
+            return SpawnResult(False, robot_id=robot_id,
+                               message=f"모르는 로봇 종류 '{type_key}'")
+
+        node = self._find_body(robot_id)
+        if node is None:
+            return SpawnResult(False, robot_id=robot_id,
+                               message=f'{robot_id} 의 몸을 씬 트리에서 못 찾았습니다')
+
+        self._spawned.setdefault(robot_id, (node, None, robot_type))
+        if not robot_type.needs_sync:
+            return SpawnResult(True, robot_id=robot_id,
+                               message=f'{robot_id} 몸이 이미 있어 그대로 둡니다')
+
+        field = node.getField('synchronization')
+        if field is not None and bool(field.getSFBool()):
+            return SpawnResult(True, robot_id=robot_id,
+                               message=f'{robot_id} 몸이 이미 있고 동기화도 켜져 있습니다')
+
+        self._pending_sync[robot_id] = (node, robot_type)
+        return SpawnResult(
+            True, robot_id=robot_id,
+            message=(f'{robot_id} 몸이 이미 있어 그대로 둡니다 '
+                     '— 외부 뇌가 등록되면 동기화를 되돌립니다'))
+
+    def _find_body(self, robot_id):
+        """씬 트리에서 이름이 일치하는 로봇 노드를 찾는다. 없으면 None."""
+        for i in range(self._root_children.getCount()):
+            node = self._root_children.getMFNode(i)
+            if node is None or node.getTypeName() not in KNOWN_ROBOT_PROTOS:
+                continue
+            name_field = node.getField('name')
+            if name_field is not None and name_field.getSFString() == robot_id:
+                return node
+        return None
+
     def reclaim(self, type_key, robot_id, **spawn_kwargs) -> SpawnResult:
         """뇌 없이 몸만 남은 로봇을 **버리고 새로 소환한다.**
 
@@ -399,6 +535,33 @@ class SpawnSupervisor(Node):
             # 편대 소환이 실패해도 노드는 살아 있어야 한다. 서비스로 수동 소환은
             # 계속 되어야 하고, 여기서 죽으면 컨테이너가 재시작 루프에 빠진다.
             self.get_logger().error(f'편대 소환 중 오류: {exc}')
+        finally:
+            # 성공이든 실패든 몸을 더 건드리지 않는다. 로봇별 컨테이너를 풀어 준다.
+            # 실패했다고 계속 붙잡아 두면 아무것도 못 뜬다.
+            self._mark_ready()
+
+    def _clear_ready(self):
+        if not self._ready_file:
+            return
+        try:
+            os.remove(self._ready_file)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            self.get_logger().warn(f'준비 표시를 지우지 못했습니다: {exc}')
+
+    def _mark_ready(self):
+        """몸이 확정됐음을 알린다 (compose healthcheck 가 이 파일을 본다)."""
+        if not self._ready_file:
+            return
+        try:
+            with open(self._ready_file, 'w', encoding='utf-8') as f:
+                f.write('ready\n')
+        except OSError as exc:
+            self.get_logger().warn(f'준비 표시를 만들지 못했습니다: {exc}')
+            return
+        self.get_logger().info(
+            f'편대 준비 완료 — 로봇별 컨테이너를 풀어 줍니다 ({self._ready_file})')
 
     # ------------------------------------------------------------------ 삽입/롤백
 
@@ -462,12 +625,14 @@ class SpawnSupervisor(Node):
         살아있는지 알 방법이 없다. 그런데 그 컨테이너 안의 robot_registrar 가 1Hz 로
         자기 이름을 보내므로, 그 이름이 보이면 뇌가 붙었다는 뜻이다.
         """
-        if not self._pending_sync:
-            return
         try:
             robot_id = json.loads(msg.data).get('robot_id', '')
         except (ValueError, TypeError):
             return
+        if robot_id:
+            # 뇌가 살아 있다는 증거. stale_body_policy=recreate 가 "지워도 되는 몸"과
+            # "건드리면 안 되는 몸"을 가르는 근거로 쓴다.
+            self.live_registrations.add(robot_id)
         entry = self._pending_sync.pop(robot_id, None)
         if entry is None:
             return

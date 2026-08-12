@@ -142,8 +142,25 @@ def service_block(robot, plat, cpus):
         '      bash -c "source /ros2_ws/install/setup.bash &&',
         f'               ros2 launch {pkg} {launch}"',
         '    depends_on:',
-        '      - fleet',
+        '      fleet:',
     ]
+    if needs_sync:
+        # 🚨 이 로봇만 healthcheck 를 기다리지 않는다. 기다리면 교착이다.
+        #
+        # 동기화가 필요한 기체(드론)는 몸이 synchronization TRUE 로 남는다.
+        # compose 를 내리면 그 몸만 월드에 남고, Webots 는 기다려 줄 컨트롤러가
+        # 없어 **시뮬을 멈춘다.** 그러면 소환기의 step() 도 막혀 편대 처리를 못 하고,
+        # 준비 파일이 안 생겨 healthcheck 가 실패하고, 그래서 이 드라이버도 안 뜬다.
+        # 소환기가 스스로 풀 수도 없다 — supervisor 의 필드 쓰기는 스텝이 돌아야
+        # 반영되는데 그 스텝에서 막혀 있기 때문이다(실측 확인).
+        #
+        # 이 드라이버가 붙는 것이 유일한 해소 수단이라 먼저 띄운다.
+        lines.append('        condition: service_started')
+    else:
+        # fleet 이 "떴다"가 아니라 "몸을 다 확정했다"를 기다린다. 안 그러면
+        # 드라이버가 옛 몸에 붙은 직후 소환기가 그 몸을 잔여물로 지워서
+        # 드라이버가 끊기고 종료한다(실측).
+        lines.append('        condition: service_healthy')
     return '\n'.join(lines)
 
 
@@ -153,9 +170,12 @@ def render(robots, plat, cpus, manifest_name):
         f'  # 매니페스트: config/fleet/{manifest_name}  (로봇 {len(robots)}대)',
         '  #',
         '  # 몸은 fleet 컨테이너의 소환기가 Webots 에 주입하고, 뇌(driver/SLAM/Nav2)는',
-        '  # 아래 컨테이너들이 담당한다. depends_on: fleet 인 이유는 몸이 먼저 생기는',
-        '  # 편이 자연스럽기 때문이고, 순서가 뒤바뀌어도 extern 컨트롤러가 몸이',
-        '  # 나타날 때까지 기다리므로 깨지지는 않는다.',
+        '  # 아래 컨테이너들이 담당한다.',
+        '  #',
+        '  # depends_on 에 condition: service_healthy 를 쓴다. fleet 이 "떴다"가 아니라',
+        '  # "몸을 다 확정했다"를 기다려야 하기 때문이다 — 소환기는 지난 세션의 잔여 몸을',
+        '  # 지우고 새로 만드는데, 그 전에 드라이버가 옛 몸에 붙으면 몸이 사라지는 순간',
+        '  # 드라이버가 끊기고 종료한다(ros2 launch 는 그 노드를 되살리지 않는다).',
         '  #',
         '  # 코어를 고정하려면 각 서비스에 cpuset 을 직접 추가한다:  cpuset: "0,1"',
     ]

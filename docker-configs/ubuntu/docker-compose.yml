@@ -51,6 +51,111 @@ x-ros-common: &ros-common
     - ROS_DOMAIN_ID=30
 
 services:
+# >>> FLEET GENERATED — gen_fleet_compose.py 가 관리한다. 직접 고치지 말 것
+  # 매니페스트: config/fleet/default.yaml  (로봇 4대)
+  #
+  # 몸은 fleet 컨테이너의 소환기가 Webots 에 주입하고, 뇌(driver/SLAM/Nav2)는
+  # 아래 컨테이너들이 담당한다.
+  #
+  # depends_on 에 condition: service_healthy 를 쓴다. fleet 이 "떴다"가 아니라
+  # "몸을 다 확정했다"를 기다려야 하기 때문이다 — 소환기는 지난 세션의 잔여 몸을
+  # 지우고 새로 만드는데, 그 전에 드라이버가 옛 몸에 붙으면 몸이 사라지는 순간
+  # 드라이버가 끊기고 종료한다(ros2 launch 는 그 노드를 되살리지 않는다).
+  #
+  # 코어를 고정하려면 각 서비스에 cpuset 을 직접 추가한다:  cpuset: "0,1"
+  ugv1:
+    <<: *ros-common
+    container_name: ugv1_brain_ubuntu
+    restart: unless-stopped
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - ROS_LOCALHOST_ONLY=0
+      - ROS_DOMAIN_ID=30
+      - WEBOTS_HOST=host.docker.internal
+      - WEBOTS_PORT=1234
+      - ROBOT_ID=ugv1
+      - ROBOT_INIT_X=-6.159
+      - ROBOT_INIT_Y=1.263
+      - ROBOT_INIT_YAW=-2.910
+      - ROBOT_SYNCHRONIZATION=false
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 launch webots_python single_ugv.launch.py"
+    depends_on:
+      fleet:
+        condition: service_healthy
+
+  ugv2:
+    <<: *ros-common
+    container_name: ugv2_brain_ubuntu
+    restart: unless-stopped
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - ROS_LOCALHOST_ONLY=0
+      - ROS_DOMAIN_ID=30
+      - WEBOTS_HOST=host.docker.internal
+      - WEBOTS_PORT=1234
+      - ROBOT_ID=ugv2
+      - ROBOT_INIT_X=8.376
+      - ROBOT_INIT_Y=1.373
+      - ROBOT_INIT_YAW=-0.064
+      - ROBOT_SYNCHRONIZATION=false
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 launch webots_python single_ugv.launch.py"
+    depends_on:
+      fleet:
+        condition: service_healthy
+
+  spot1:
+    <<: *ros-common
+    container_name: spot1_brain_ubuntu
+    restart: unless-stopped
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - ROS_LOCALHOST_ONLY=0
+      - ROS_DOMAIN_ID=30
+      - WEBOTS_HOST=host.docker.internal
+      - WEBOTS_PORT=1234
+      - ROBOT_ID=spot1
+      - ROBOT_INIT_X=-0.840
+      - ROBOT_INIT_Y=-0.340
+      - ROBOT_INIT_YAW=0.000
+      - ROBOT_SYNCHRONIZATION=false
+      - ROBOT_DEF=SPOT1
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 launch webots_spot single_spot_launch.py"
+    depends_on:
+      fleet:
+        condition: service_healthy
+
+  drone1:
+    <<: *ros-common
+    container_name: drone1_brain_ubuntu
+    restart: unless-stopped
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - ROS_LOCALHOST_ONLY=0
+      - ROS_DOMAIN_ID=30
+      - WEBOTS_HOST=host.docker.internal
+      - WEBOTS_PORT=1234
+      - ROBOT_ID=drone1
+      - ROBOT_INIT_X=-6.500
+      - ROBOT_INIT_Y=5.500
+      - ROBOT_INIT_YAW=0.000
+      - ROBOT_SYNCHRONIZATION=true
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 launch webots_python single_drone.launch.py"
+    depends_on:
+      fleet:
+        condition: service_started
+# <<< FLEET GENERATED
 # 1. 마스터 관제 컨테이너
   master:
     <<: *ros-common
@@ -68,10 +173,12 @@ services:
                ros2 launch webots_map_merge master.launch.py"
 
   # 2. 편대 컨테이너 (fleet)
-  # 🤖 이 컨테이너가 편대 전체를 담당합니다. 기동하면 편대 매니페스트대로 Webots에
-  #    로봇을 소환하고, 각 로봇의 뇌(driver/SLAM/Nav2)를 자식 프로세스로 띄웁니다.
-  #    예전에는 로봇 1대 = 컨테이너 1개였습니다. 이제 로봇은 yaml 데이터입니다.
-  #      편대 바꾸기 : 아래 command 의 fleet:= 를 바꾸세요
+  # 🤖 소환 담당. 편대 매니페스트대로 Webots 에 **로봇의 몸을 주입**합니다.
+  #    제어·경로(driver/SLAM/Nav2)는 위 로봇별 컨테이너가 담당합니다
+  #    (manifest_brains:=false). 매니페스트에 없는 런타임 소환만 이 컨테이너가
+  #    뇌까지 띄웁니다 — 이름과 자리가 런타임에 정해져 기다려 줄 컨테이너가 없기 때문입니다.
+  #      편대 바꾸기 : 아래 command 의 fleet:= 를 바꾸고 생성기를 다시 돌리세요
+  #                   docker run --rm -v ":/w" -w /w windows-master \n  #                     python3 src/webots_robot_spawner/scripts/gen_fleet_compose.py --fleet NAME
   #                   (config/fleet/ 안: default.yaml / random_squad.yaml / ugv_only.yaml)
   #      자동 소환 끔: fleet:='' 로 두면 서비스 호출만 받습니다
   #      런타임 추가 : ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'drone', random: true}"
@@ -95,6 +202,15 @@ services:
       - WEBOTS_PORT=1234
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
-               ros2 launch webots_robot_spawner spawner.launch.py fleet:=default.yaml"
+               ros2 launch webots_robot_spawner spawner.launch.py fleet:=default.yaml manifest_brains:=false"
+    # 🩺 소환기가 편대 몸을 다 확정하면 /tmp/fleet_ready 를 만든다. 로봇별 컨테이너는
+    #    이 헬스체크가 통과할 때까지 기다린다 (condition: service_healthy).
+    #    안 기다리면 드라이버가 옛 몸에 붙은 직후 그 몸이 지워져 드라이버가 죽는다.
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/fleet_ready"]
+      interval: 3s
+      timeout: 2s
+      retries: 40
+      start_period: 5s
     depends_on:
       - master
