@@ -59,6 +59,11 @@ class LocalProcessLauncher:
             'ROBOT_SYNCHRONIZATION': 'false',
         })
 
+        # Spot 처럼 Supervisor 로 자기 몸 노드를 찾는 드라이버를 위해, 씬 트리에 붙인
+        # DEF 이름을 그대로 알려준다. 이게 어긋나면 드라이버가 남의 몸을 잡는다.
+        if robot_type.needs_def:
+            env['ROBOT_DEF'] = robot_type.def_name(robot_id)
+
         cmd = ['ros2', 'launch', robot_type.brain_package, robot_type.brain_launch]
         log_path = self._log_dir / f'{robot_id}.log'
 

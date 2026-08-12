@@ -9,8 +9,19 @@ from launch.actions import TimerAction
 
 def generate_launch_description():
     # 🌟 1. docker-compose에서 주입한 환경 변수 읽어오기 (기본값: ugv1)
+    #
+    # 소환된 UGV(webots_robot_spawner)도 같은 경로로 들어온다. 소환기가 자식 프로세스의
+    # 환경 변수에 ROBOT_ID / ROBOT_INIT_* 를 넣어 주므로 이 런치 파일은 정적으로 뜬
+    # ugv1인지 런타임에 소환된 ugv3인지 구분할 필요가 없다.
+    #   손으로 띄워 볼 때:  ROBOT_ID=ugv3 ros2 launch webots_python single_ugv.launch.py
     ns = os.environ.get('ROBOT_ID', 'ugv1')
-    
+
+    # Webots가 도는 호스트. 리눅스 네이티브 Docker에는 host.docker.internal이 기본으로
+    # 없어 compose의 extra_hosts로 별칭을 만들지만, 원격 PC의 Webots에 붙는 경우를
+    # 위해 환경 변수로도 바꿀 수 있게 열어 둔다.
+    webots_host = os.environ.get('WEBOTS_HOST', 'host.docker.internal')
+    webots_port = os.environ.get('WEBOTS_PORT', '1234')
+
     webots_pkg_dir = get_package_share_directory('webots_python')
     navigation_pkg_dir = get_package_share_directory('navigation')
     
@@ -38,12 +49,15 @@ def generate_launch_description():
         package='webots_ros2_driver',
         executable='driver',
         name=f'{ns}',
-        additional_env={'WEBOTS_CONTROLLER_URL': f'tcp://host.docker.internal:1234/{ns}'},
+        additional_env={'WEBOTS_CONTROLLER_URL': f'tcp://{webots_host}:{webots_port}/{ns}'},
         parameters=[{
             'robot_description': robot_description,
             'use_sim_time': True,
             'set_robot_state_publisher': False, # 🚨 필수
-            'synchronization': True,
+            # Webots 노드의 synchronization 필드와 값이 같아야 한다. 소환된 로봇은
+            # 노드가 synchronization FALSE 로 들어가므로(뇌 접속 전까지 시뮬 전체가
+            # 멈추는 것을 막기 위해) 소환기가 이 변수를 'false' 로 넣어 준다.
+            'synchronization': os.environ.get('ROBOT_SYNCHRONIZATION', 'true').lower() != 'false',
         }],
         remappings=[
             ('/tf', '/tf'),
