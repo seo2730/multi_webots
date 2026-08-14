@@ -9,528 +9,341 @@
 world: arena_s3
 cell: 0.5
 min_door_width: 1.2
+yard: 12.00
+building: [76.00, 76.00]
+
+# 바깥에서 건물로 들어오는 곳. 복도 끝이라 진입 즉시 동선에 붙는다.
+# side 는 건물을 기준으로 한 방향이다.
+entrances:
+  - {x: -14.25, y: 37.75, width: 2.50, side: north}
+  - {x: 14.25, y: -37.75, width: 2.50, side: south}
+  - {x: -37.75, y: 28.00, width: 3.00, side: west}
+  - {x: 37.75, y: -10.00, width: 3.00, side: east}
 
 # 복도 중심선 — 순찰이나 광역 이동 경로를 짤 때 쓴다
 corridors:
-  - {center: [0.00, -40.75], size: [99.00, 2.50]}
-  - {center: [0.00, -18.25], size: [99.00, 3.50]}
-  - {center: [0.00, 4.75], size: [99.00, 3.50]}
-  - {center: [0.00, 24.00], size: [99.00, 5.00]}
-  - {center: [0.00, 42.00], size: [99.00, 3.00]}
-  - {center: [-17.25, 0.00], size: [2.50, 99.00]}
-  - {center: [14.75, 0.00], size: [2.50, 99.00]}
+  - {center: [0.00, -27.50], size: [75.00, 5.00]}
+  - {center: [0.00, -10.00], size: [75.00, 3.00]}
+  - {center: [0.00, 8.75], size: [75.00, 2.50]}
+  - {center: [0.00, 28.00], size: [75.00, 3.00]}
+  - {center: [-14.25, 0.00], size: [2.50, 75.00]}
+  - {center: [14.25, 0.00], size: [2.50, 75.00]}
 
 rooms:
   - id: room_0
-    center: [-43.75, -46.00]
-    size: [11.50, 7.00]
-    area: 80.5
+    center: [-26.75, -34.00]
+    size: [21.50, 7.00]
+    area: 150.5
     doorways:
-      - {x: -44.00, y: -42.25, width: 2.00, side: north}
+      - {x: -27.00, y: -30.25, width: 2.00, side: north}
   - id: room_1
-    center: [-28.25, -46.00]
-    size: [18.50, 7.00]
-    area: 129.5
+    center: [0.00, -34.00]
+    size: [25.00, 7.00]
+    area: 175.0
     doorways:
-      - {x: -28.50, y: -42.25, width: 2.00, side: north}
+      - {x: 0.00, y: -30.25, width: 2.00, side: north}
   - id: room_2
-    center: [-11.50, -46.00]
-    size: [8.00, 7.00]
-    area: 56.0
+    center: [19.00, -34.00]
+    size: [6.00, 7.00]
+    area: 42.0
     doorways:
-      - {x: -11.50, y: -42.25, width: 2.00, side: north}
+      - {x: 19.00, y: -30.25, width: 2.00, side: north}
   - id: room_3
-    center: [-2.00, -46.00]
-    size: [10.00, 7.00]
-    area: 70.0
+    center: [26.25, -34.00]
+    size: [7.50, 7.00]
+    area: 52.5
     doorways:
-      - {x: -2.00, y: -42.25, width: 2.00, side: north}
+      - {x: 26.00, y: -30.25, width: 2.00, side: north}
   - id: room_4
-    center: [8.25, -46.00]
-    size: [9.50, 7.00]
-    area: 66.5
+    center: [34.00, -34.00]
+    size: [7.00, 7.00]
+    area: 49.0
     doorways:
-      - {x: 8.00, y: -42.25, width: 2.00, side: north}
+      - {x: 34.00, y: -30.25, width: 2.00, side: north}
   - id: room_5
-    center: [26.50, -46.00]
-    size: [20.00, 7.00]
-    area: 140.0
+    center: [-26.75, -21.75]
+    size: [21.50, 5.50]
+    area: 118.2
     doorways:
-      - {x: 26.50, y: -42.25, width: 2.00, side: north}
+      - {x: -27.00, y: -24.75, width: 2.00, side: south}
   - id: room_6
-    center: [43.25, -46.00]
-    size: [12.50, 7.00]
-    area: 87.5
+    center: [-8.50, -21.75]
+    size: [8.00, 5.50]
+    area: 44.0
     doorways:
-      - {x: 43.00, y: -42.25, width: 2.00, side: north}
+      - {x: -8.50, y: -24.75, width: 2.00, side: south}
   - id: room_7
-    center: [-34.25, -34.25]
-    size: [30.50, 9.50]
-    area: 289.8
+    center: [-0.50, -21.75]
+    size: [7.00, 5.50]
+    area: 38.5
     doorways:
-      - {x: -34.50, y: -39.25, width: 2.00, side: south}
+      - {x: -0.50, y: -24.75, width: 2.00, side: south}
   - id: room_8
-    center: [-12.75, -34.25]
-    size: [5.50, 9.50]
-    area: 52.2
+    center: [8.00, -21.75]
+    size: [9.00, 5.50]
+    area: 49.5
     doorways:
-      - {x: -13.00, y: -39.25, width: 2.00, side: south}
+      - {x: 8.00, y: -24.75, width: 2.00, side: south}
   - id: room_9
-    center: [-4.50, -34.25]
-    size: [10.00, 9.50]
-    area: 95.0
+    center: [19.50, -21.75]
+    size: [7.00, 5.50]
+    area: 38.5
     doorways:
-      - {x: -4.50, y: -39.25, width: 2.00, side: south}
+      - {x: 19.50, y: -24.75, width: 2.00, side: south}
   - id: room_10
-    center: [7.00, -34.25]
-    size: [12.00, 9.50]
-    area: 114.0
+    center: [25.75, -21.75]
+    size: [4.50, 5.50]
+    area: 24.8
     doorways:
-      - {x: 7.00, y: -39.25, width: 2.00, side: south}
+      - {x: 25.50, y: -24.75, width: 2.00, side: south}
   - id: room_11
-    center: [26.75, -34.25]
-    size: [20.50, 9.50]
-    area: 194.8
+    center: [33.00, -21.75]
+    size: [9.00, 5.50]
+    area: 49.5
     doorways:
-      - {x: 26.50, y: -39.25, width: 2.00, side: south}
+      - {x: 33.00, y: -24.75, width: 2.00, side: south}
   - id: room_12
-    center: [43.50, -34.25]
-    size: [12.00, 9.50]
-    area: 114.0
-    doorways:
-      - {x: 43.50, y: -39.25, width: 2.00, side: south}
-  - id: room_13
-    center: [-39.00, -24.75]
-    size: [21.00, 8.50]
-    area: 178.5
-    doorways:
-      - {x: -39.00, y: -20.25, width: 2.00, side: north}
-  - id: room_14
-    center: [-23.50, -24.75]
-    size: [9.00, 8.50]
-    area: 76.5
-    doorways:
-      - {x: -23.50, y: -20.25, width: 2.00, side: north}
-  - id: room_15
-    center: [-1.25, -24.75]
-    size: [28.50, 8.50]
-    area: 242.2
-    doorways:
-      - {x: -1.50, y: -20.25, width: 2.00, side: north}
-  - id: room_16
-    center: [22.50, -24.75]
-    size: [12.00, 8.50]
-    area: 102.0
-    doorways:
-      - {x: 22.50, y: -20.25, width: 2.00, side: north}
-  - id: room_17
-    center: [33.00, -24.75]
-    size: [8.00, 8.50]
-    area: 68.0
-    doorways:
-      - {x: 33.00, y: -20.25, width: 2.00, side: north}
-  - id: room_18
-    center: [40.25, -24.75]
-    size: [5.50, 8.50]
-    area: 46.8
-    doorways:
-      - {x: 40.00, y: -20.25, width: 2.00, side: north}
-  - id: room_19
-    center: [46.50, -24.75]
-    size: [6.00, 8.50]
-    area: 51.0
-    doorways:
-      - {x: 46.50, y: -20.25, width: 2.00, side: north}
-  - id: room_20
-    center: [-42.75, -11.50]
-    size: [13.50, 9.00]
-    area: 121.5
-    doorways:
-      - {x: -43.00, y: -16.25, width: 2.00, side: south}
-  - id: room_21
-    center: [-27.25, -11.50]
-    size: [16.50, 9.00]
-    area: 148.5
-    doorways:
-      - {x: -27.50, y: -16.25, width: 2.00, side: south}
-  - id: room_22
-    center: [-12.50, -11.50]
-    size: [6.00, 9.00]
-    area: 54.0
-    doorways:
-      - {x: -12.50, y: -16.25, width: 2.00, side: south}
-  - id: room_23
-    center: [-2.50, -11.50]
-    size: [13.00, 9.00]
-    area: 117.0
-    doorways:
-      - {x: -2.50, y: -16.25, width: 2.00, side: south}
-  - id: room_24
-    center: [8.75, -11.50]
-    size: [8.50, 9.00]
-    area: 76.5
-    doorways:
-      - {x: 8.50, y: -16.25, width: 2.00, side: south}
-  - id: room_25
-    center: [19.25, -11.50]
-    size: [5.50, 9.00]
-    area: 49.5
-    doorways:
-      - {x: 19.00, y: -16.25, width: 2.00, side: south}
-  - id: room_26
-    center: [25.25, -11.50]
-    size: [5.50, 9.00]
-    area: 49.5
-    doorways:
-      - {x: 25.00, y: -16.25, width: 2.00, side: south}
-  - id: room_27
-    center: [33.00, -11.50]
-    size: [9.00, 9.00]
-    area: 81.0
-    doorways:
-      - {x: 33.00, y: -16.25, width: 2.00, side: south}
-  - id: room_28
-    center: [43.75, -11.50]
-    size: [11.50, 9.00]
-    area: 103.5
-    doorways:
-      - {x: 43.50, y: -16.25, width: 2.00, side: south}
-  - id: room_29
-    center: [-46.75, -2.00]
-    size: [5.50, 9.00]
-    area: 49.5
-    doorways:
-      - {x: -47.00, y: 2.75, width: 2.00, side: north}
-  - id: room_30
-    center: [-39.50, -2.00]
-    size: [8.00, 9.00]
-    area: 72.0
-    doorways:
-      - {x: -39.50, y: 2.75, width: 2.00, side: north}
-  - id: room_31
-    center: [-32.50, -2.00]
-    size: [5.00, 9.00]
-    area: 45.0
-    doorways:
-      - {x: -32.50, y: 2.75, width: 2.00, side: north}
-  - id: room_32
-    center: [-24.25, -2.00]
-    size: [10.50, 9.00]
-    area: 94.5
-    doorways:
-      - {x: -24.50, y: 2.75, width: 2.00, side: north}
-  - id: room_33
-    center: [-12.50, -2.00]
-    size: [6.00, 9.00]
-    area: 54.0
-    doorways:
-      - {x: -12.50, y: 2.75, width: 2.00, side: north}
-  - id: room_34
-    center: [-4.00, -2.00]
-    size: [10.00, 9.00]
-    area: 90.0
-    doorways:
-      - {x: -4.00, y: 2.75, width: 2.00, side: north}
-  - id: room_35
-    center: [7.25, -2.00]
-    size: [11.50, 9.00]
-    area: 103.5
-    doorways:
-      - {x: 7.00, y: 2.75, width: 2.00, side: north}
-  - id: room_36
-    center: [21.75, -2.00]
-    size: [10.50, 9.00]
-    area: 94.5
-    doorways:
-      - {x: 21.50, y: 2.75, width: 2.00, side: north}
-  - id: room_37
-    center: [38.50, -2.00]
-    size: [22.00, 9.00]
-    area: 198.0
-    doorways:
-      - {x: 38.50, y: 2.75, width: 2.00, side: north}
-  - id: room_38
-    center: [-46.00, 11.75]
-    size: [7.00, 9.50]
-    area: 66.5
-    doorways:
-      - {x: -46.00, y: 6.75, width: 2.00, side: south}
-  - id: room_39
-    center: [-39.25, 11.75]
-    size: [5.50, 9.50]
-    area: 52.2
-    doorways:
-      - {x: -39.50, y: 6.75, width: 2.00, side: south}
-  - id: room_40
-    center: [-31.25, 11.75]
-    size: [9.50, 9.50]
-    area: 90.2
-    doorways:
-      - {x: -31.50, y: 6.75, width: 2.00, side: south}
-  - id: room_41
-    center: [-22.50, 11.75]
-    size: [7.00, 9.50]
-    area: 66.5
-    doorways:
-      - {x: -22.50, y: 6.75, width: 2.00, side: south}
-  - id: room_42
-    center: [-9.75, 11.75]
-    size: [11.50, 9.50]
-    area: 109.2
-    doorways:
-      - {x: -10.00, y: 6.75, width: 2.00, side: south}
-  - id: room_43
-    center: [4.75, 11.75]
-    size: [16.50, 9.50]
-    area: 156.8
-    doorways:
-      - {x: 4.50, y: 6.75, width: 2.00, side: south}
-  - id: room_44
-    center: [20.75, 11.75]
-    size: [8.50, 9.50]
-    area: 80.8
-    doorways:
-      - {x: 20.50, y: 6.75, width: 2.00, side: south}
-  - id: room_45
-    center: [28.00, 11.75]
-    size: [5.00, 9.50]
-    area: 47.5
-    doorways:
-      - {x: 28.00, y: 6.75, width: 2.00, side: south}
-  - id: room_46
-    center: [33.50, 11.75]
-    size: [5.00, 9.50]
-    area: 47.5
-    doorways:
-      - {x: 33.50, y: 6.75, width: 2.00, side: south}
-  - id: room_47
-    center: [43.00, 11.75]
-    size: [13.00, 9.50]
-    area: 123.5
-    doorways:
-      - {x: 43.00, y: 6.75, width: 2.00, side: south}
-  - id: room_48
-    center: [-47.00, 19.00]
-    size: [5.00, 4.00]
-    area: 20.0
-    doorways:
-      - {x: -47.00, y: 21.25, width: 2.00, side: north}
-  - id: room_49
-    center: [-39.25, 19.00]
-    size: [9.50, 4.00]
-    area: 38.0
-    doorways:
-      - {x: -39.50, y: 21.25, width: 2.00, side: north}
-  - id: room_50
-    center: [-29.75, 19.00]
-    size: [8.50, 4.00]
-    area: 34.0
-    doorways:
-      - {x: -30.00, y: 21.25, width: 2.00, side: north}
-  - id: room_51
-    center: [-22.00, 19.00]
-    size: [6.00, 4.00]
-    area: 24.0
-    doorways:
-      - {x: -22.00, y: 21.25, width: 2.00, side: north}
-  - id: room_52
-    center: [-1.25, 19.00]
-    size: [28.50, 4.00]
-    area: 114.0
-    doorways:
-      - {x: -1.50, y: 21.25, width: 2.00, side: north}
-  - id: room_53
-    center: [33.00, 19.00]
-    size: [33.00, 4.00]
-    area: 132.0
-    doorways:
-      - {x: 33.00, y: 21.25, width: 2.00, side: north}
-  - id: room_54
-    center: [-42.50, 30.00]
-    size: [14.00, 6.00]
-    area: 84.0
-    doorways:
-      - {x: -42.50, y: 26.75, width: 2.00, side: south}
-  - id: room_55
-    center: [-27.00, 30.00]
-    size: [16.00, 6.00]
-    area: 96.0
-    doorways:
-      - {x: -27.00, y: 26.75, width: 2.00, side: south}
-  - id: room_56
-    center: [-10.50, 30.00]
-    size: [10.00, 6.00]
-    area: 60.0
-    doorways:
-      - {x: -10.50, y: 26.75, width: 2.00, side: south}
-  - id: room_57
-    center: [-0.75, 30.00]
-    size: [8.50, 6.00]
-    area: 51.0
-    doorways:
-      - {x: -1.00, y: 26.75, width: 2.00, side: south}
-  - id: room_58
-    center: [8.50, 30.00]
-    size: [9.00, 6.00]
-    area: 54.0
-    doorways:
-      - {x: 8.50, y: 26.75, width: 2.00, side: south}
-  - id: room_59
-    center: [22.75, 30.00]
-    size: [12.50, 6.00]
-    area: 75.0
-    doorways:
-      - {x: 22.50, y: 26.75, width: 2.00, side: south}
-  - id: room_60
-    center: [39.50, 30.00]
-    size: [20.00, 6.00]
-    area: 120.0
-    doorways:
-      - {x: 39.50, y: 26.75, width: 2.00, side: south}
-  - id: room_61
-    center: [-41.50, 36.75]
-    size: [16.00, 6.50]
-    area: 104.0
-    doorways:
-      - {x: -41.50, y: 40.25, width: 2.00, side: north}
-  - id: room_62
-    center: [-26.00, 36.75]
-    size: [14.00, 6.50]
-    area: 91.0
-    doorways:
-      - {x: -26.00, y: 40.25, width: 2.00, side: north}
-  - id: room_63
-    center: [-5.75, 36.75]
-    size: [19.50, 6.50]
-    area: 126.8
-    doorways:
-      - {x: -6.00, y: 40.25, width: 2.00, side: north}
-  - id: room_64
-    center: [8.75, 36.75]
-    size: [8.50, 6.50]
-    area: 55.2
-    doorways:
-      - {x: 8.50, y: 40.25, width: 2.00, side: north}
-  - id: room_65
-    center: [20.50, 36.75]
+    center: [-33.50, -15.25]
     size: [8.00, 6.50]
     area: 52.0
     doorways:
-      - {x: 20.50, y: 40.25, width: 2.00, side: north}
-  - id: room_66
-    center: [37.25, 36.75]
-    size: [24.50, 6.50]
-    area: 159.2
+      - {x: -33.50, y: -11.75, width: 2.00, side: north}
+  - id: room_13
+    center: [-25.50, -15.25]
+    size: [7.00, 6.50]
+    area: 45.5
     doorways:
-      - {x: 37.00, y: 40.25, width: 2.00, side: north}
-  - id: room_67
-    center: [-42.25, 46.75]
-    size: [14.50, 5.50]
-    area: 79.8
+      - {x: -25.50, y: -11.75, width: 2.00, side: north}
+  - id: room_14
+    center: [-18.75, -15.25]
+    size: [5.50, 6.50]
+    area: 35.8
     doorways:
-      - {x: -42.50, y: 43.75, width: 2.00, side: south}
-  - id: room_68
-    center: [-26.75, 46.75]
-    size: [15.50, 5.50]
-    area: 85.2
+      - {x: -19.00, y: -11.75, width: 2.00, side: north}
+  - id: room_15
+    center: [-8.00, -15.25]
+    size: [9.00, 6.50]
+    area: 58.5
     doorways:
-      - {x: -27.00, y: 43.75, width: 2.00, side: south}
-  - id: room_69
-    center: [-10.25, 46.75]
-    size: [10.50, 5.50]
-    area: 57.8
+      - {x: -8.00, y: -11.75, width: 2.00, side: north}
+  - id: room_16
+    center: [-0.75, -15.25]
+    size: [4.50, 6.50]
+    area: 29.2
     doorways:
-      - {x: -10.50, y: 43.75, width: 2.00, side: south}
-  - id: room_70
-    center: [4.25, 46.75]
-    size: [17.50, 5.50]
-    area: 96.2
+      - {x: -1.00, y: -11.75, width: 2.00, side: north}
+  - id: room_17
+    center: [7.25, -15.25]
+    size: [10.50, 6.50]
+    area: 68.2
     doorways:
-      - {x: 4.00, y: 43.75, width: 2.00, side: south}
-  - id: room_71
-    center: [28.00, 46.75]
-    size: [23.00, 5.50]
-    area: 126.5
+      - {x: 7.00, y: -11.75, width: 2.00, side: north}
+  - id: room_18
+    center: [26.75, -15.25]
+    size: [21.50, 6.50]
+    area: 139.8
     doorways:
-      - {x: 28.00, y: 43.75, width: 2.00, side: south}
-  - id: room_72
-    center: [44.75, 46.75]
-    size: [9.50, 5.50]
-    area: 52.2
+      - {x: 26.50, y: -11.75, width: 2.00, side: north}
+  - id: room_19
+    center: [-33.00, -4.75]
+    size: [9.00, 6.50]
+    area: 58.5
     doorways:
-      - {x: 44.50, y: 43.75, width: 2.00, side: south}
+      - {x: -33.00, y: -8.25, width: 2.00, side: south}
+  - id: room_20
+    center: [-25.00, -4.75]
+    size: [6.00, 6.50]
+    area: 39.0
+    doorways:
+      - {x: -25.00, y: -8.25, width: 2.00, side: south}
+  - id: room_21
+    center: [-18.75, -4.75]
+    size: [5.50, 6.50]
+    area: 35.8
+    doorways:
+      - {x: -19.00, y: -8.25, width: 2.00, side: south}
+  - id: room_22
+    center: [-7.00, -4.75]
+    size: [11.00, 6.50]
+    area: 71.5
+    doorways:
+      - {x: -7.00, y: -8.25, width: 2.00, side: south}
+  - id: room_23
+    center: [5.75, -4.75]
+    size: [13.50, 6.50]
+    area: 87.8
+    doorways:
+      - {x: 5.50, y: -8.25, width: 2.00, side: south}
+  - id: room_24
+    center: [18.50, -4.75]
+    size: [5.00, 6.50]
+    area: 32.5
+    doorways:
+      - {x: 18.50, y: -8.25, width: 2.00, side: south}
+  - id: room_25
+    center: [26.00, -4.75]
+    size: [9.00, 6.50]
+    area: 58.5
+    doorways:
+      - {x: 26.00, y: -8.25, width: 2.00, side: south}
+  - id: room_26
+    center: [34.25, -4.75]
+    size: [6.50, 6.50]
+    area: 42.2
+    doorways:
+      - {x: 34.00, y: -8.25, width: 2.00, side: south}
+  - id: room_27
+    center: [-35.00, 3.00]
+    size: [5.00, 8.00]
+    area: 40.0
+    doorways:
+      - {x: -35.00, y: 7.25, width: 2.00, side: north}
+  - id: room_28
+    center: [-29.50, 3.00]
+    size: [5.00, 8.00]
+    area: 40.0
+    doorways:
+      - {x: -29.50, y: 7.25, width: 2.00, side: north}
+  - id: room_29
+    center: [-21.25, 3.00]
+    size: [10.50, 8.00]
+    area: 84.0
+    doorways:
+      - {x: -21.50, y: 7.25, width: 2.00, side: north}
+  - id: room_30
+    center: [0.00, 3.00]
+    size: [25.00, 8.00]
+    area: 200.0
+    doorways:
+      - {x: 0.00, y: 7.25, width: 2.00, side: north}
+  - id: room_31
+    center: [26.75, 3.00]
+    size: [21.50, 8.00]
+    area: 172.0
+    doorways:
+      - {x: 26.50, y: 7.25, width: 2.00, side: north}
+  - id: room_32
+    center: [-26.75, 14.25]
+    size: [21.50, 7.50]
+    area: 161.2
+    doorways:
+      - {x: -27.00, y: 10.25, width: 2.00, side: south}
+  - id: room_33
+    center: [-7.00, 14.25]
+    size: [11.00, 7.50]
+    area: 82.5
+    doorways:
+      - {x: -7.00, y: 10.25, width: 2.00, side: south}
+  - id: room_34
+    center: [1.25, 14.25]
+    size: [4.50, 7.50]
+    area: 33.8
+    doorways:
+      - {x: 1.00, y: 10.25, width: 2.00, side: south}
+  - id: room_35
+    center: [8.25, 14.25]
+    size: [8.50, 7.50]
+    area: 63.8
+    doorways:
+      - {x: 8.00, y: 10.25, width: 2.00, side: south}
+  - id: room_36
+    center: [26.75, 14.25]
+    size: [21.50, 7.50]
+    area: 161.2
+    doorways:
+      - {x: 26.50, y: 10.25, width: 2.00, side: south}
+  - id: room_37
+    center: [-26.75, 22.25]
+    size: [21.50, 7.50]
+    area: 161.2
+    doorways:
+      - {x: -27.00, y: 26.25, width: 2.00, side: north}
+  - id: room_38
+    center: [-9.00, 22.25]
+    size: [7.00, 7.50]
+    area: 52.5
+    doorways:
+      - {x: -9.00, y: 26.25, width: 2.00, side: north}
+  - id: room_39
+    center: [3.75, 22.25]
+    size: [17.50, 7.50]
+    area: 131.2
+    doorways:
+      - {x: 3.50, y: 26.25, width: 2.00, side: north}
+  - id: room_40
+    center: [26.75, 22.25]
+    size: [21.50, 7.50]
+    area: 161.2
+    doorways:
+      - {x: 26.50, y: 26.25, width: 2.00, side: north}
+  - id: room_41
+    center: [-26.75, 33.75]
+    size: [21.50, 7.50]
+    area: 161.2
+    doorways:
+      - {x: -27.00, y: 29.75, width: 2.00, side: south}
+  - id: room_42
+    center: [-8.75, 33.75]
+    size: [7.50, 7.50]
+    area: 56.2
+    doorways:
+      - {x: -9.00, y: 29.75, width: 2.00, side: south}
+  - id: room_43
+    center: [4.00, 33.75]
+    size: [17.00, 7.50]
+    area: 127.5
+    doorways:
+      - {x: 4.00, y: 29.75, width: 2.00, side: south}
+  - id: room_44
+    center: [26.75, 33.75]
+    size: [21.50, 7.50]
+    area: 161.2
+    doorways:
+      - {x: 26.50, y: 29.75, width: 2.00, side: south}
 
 doorways:
-  - {room: room_0, x: -44.00, y: -42.25, width: 2.00, side: north}
-  - {room: room_1, x: -28.50, y: -42.25, width: 2.00, side: north}
-  - {room: room_2, x: -11.50, y: -42.25, width: 2.00, side: north}
-  - {room: room_3, x: -2.00, y: -42.25, width: 2.00, side: north}
-  - {room: room_4, x: 8.00, y: -42.25, width: 2.00, side: north}
-  - {room: room_5, x: 26.50, y: -42.25, width: 2.00, side: north}
-  - {room: room_6, x: 43.00, y: -42.25, width: 2.00, side: north}
-  - {room: room_7, x: -34.50, y: -39.25, width: 2.00, side: south}
-  - {room: room_8, x: -13.00, y: -39.25, width: 2.00, side: south}
-  - {room: room_9, x: -4.50, y: -39.25, width: 2.00, side: south}
-  - {room: room_10, x: 7.00, y: -39.25, width: 2.00, side: south}
-  - {room: room_11, x: 26.50, y: -39.25, width: 2.00, side: south}
-  - {room: room_12, x: 43.50, y: -39.25, width: 2.00, side: south}
-  - {room: room_13, x: -39.00, y: -20.25, width: 2.00, side: north}
-  - {room: room_14, x: -23.50, y: -20.25, width: 2.00, side: north}
-  - {room: room_15, x: -1.50, y: -20.25, width: 2.00, side: north}
-  - {room: room_16, x: 22.50, y: -20.25, width: 2.00, side: north}
-  - {room: room_17, x: 33.00, y: -20.25, width: 2.00, side: north}
-  - {room: room_18, x: 40.00, y: -20.25, width: 2.00, side: north}
-  - {room: room_19, x: 46.50, y: -20.25, width: 2.00, side: north}
-  - {room: room_20, x: -43.00, y: -16.25, width: 2.00, side: south}
-  - {room: room_21, x: -27.50, y: -16.25, width: 2.00, side: south}
-  - {room: room_22, x: -12.50, y: -16.25, width: 2.00, side: south}
-  - {room: room_23, x: -2.50, y: -16.25, width: 2.00, side: south}
-  - {room: room_24, x: 8.50, y: -16.25, width: 2.00, side: south}
-  - {room: room_25, x: 19.00, y: -16.25, width: 2.00, side: south}
-  - {room: room_26, x: 25.00, y: -16.25, width: 2.00, side: south}
-  - {room: room_27, x: 33.00, y: -16.25, width: 2.00, side: south}
-  - {room: room_28, x: 43.50, y: -16.25, width: 2.00, side: south}
-  - {room: room_29, x: -47.00, y: 2.75, width: 2.00, side: north}
-  - {room: room_30, x: -39.50, y: 2.75, width: 2.00, side: north}
-  - {room: room_31, x: -32.50, y: 2.75, width: 2.00, side: north}
-  - {room: room_32, x: -24.50, y: 2.75, width: 2.00, side: north}
-  - {room: room_33, x: -12.50, y: 2.75, width: 2.00, side: north}
-  - {room: room_34, x: -4.00, y: 2.75, width: 2.00, side: north}
-  - {room: room_35, x: 7.00, y: 2.75, width: 2.00, side: north}
-  - {room: room_36, x: 21.50, y: 2.75, width: 2.00, side: north}
-  - {room: room_37, x: 38.50, y: 2.75, width: 2.00, side: north}
-  - {room: room_38, x: -46.00, y: 6.75, width: 2.00, side: south}
-  - {room: room_39, x: -39.50, y: 6.75, width: 2.00, side: south}
-  - {room: room_40, x: -31.50, y: 6.75, width: 2.00, side: south}
-  - {room: room_41, x: -22.50, y: 6.75, width: 2.00, side: south}
-  - {room: room_42, x: -10.00, y: 6.75, width: 2.00, side: south}
-  - {room: room_43, x: 4.50, y: 6.75, width: 2.00, side: south}
-  - {room: room_44, x: 20.50, y: 6.75, width: 2.00, side: south}
-  - {room: room_45, x: 28.00, y: 6.75, width: 2.00, side: south}
-  - {room: room_46, x: 33.50, y: 6.75, width: 2.00, side: south}
-  - {room: room_47, x: 43.00, y: 6.75, width: 2.00, side: south}
-  - {room: room_48, x: -47.00, y: 21.25, width: 2.00, side: north}
-  - {room: room_49, x: -39.50, y: 21.25, width: 2.00, side: north}
-  - {room: room_50, x: -30.00, y: 21.25, width: 2.00, side: north}
-  - {room: room_51, x: -22.00, y: 21.25, width: 2.00, side: north}
-  - {room: room_52, x: -1.50, y: 21.25, width: 2.00, side: north}
-  - {room: room_53, x: 33.00, y: 21.25, width: 2.00, side: north}
-  - {room: room_54, x: -42.50, y: 26.75, width: 2.00, side: south}
-  - {room: room_55, x: -27.00, y: 26.75, width: 2.00, side: south}
-  - {room: room_56, x: -10.50, y: 26.75, width: 2.00, side: south}
-  - {room: room_57, x: -1.00, y: 26.75, width: 2.00, side: south}
-  - {room: room_58, x: 8.50, y: 26.75, width: 2.00, side: south}
-  - {room: room_59, x: 22.50, y: 26.75, width: 2.00, side: south}
-  - {room: room_60, x: 39.50, y: 26.75, width: 2.00, side: south}
-  - {room: room_61, x: -41.50, y: 40.25, width: 2.00, side: north}
-  - {room: room_62, x: -26.00, y: 40.25, width: 2.00, side: north}
-  - {room: room_63, x: -6.00, y: 40.25, width: 2.00, side: north}
-  - {room: room_64, x: 8.50, y: 40.25, width: 2.00, side: north}
-  - {room: room_65, x: 20.50, y: 40.25, width: 2.00, side: north}
-  - {room: room_66, x: 37.00, y: 40.25, width: 2.00, side: north}
-  - {room: room_67, x: -42.50, y: 43.75, width: 2.00, side: south}
-  - {room: room_68, x: -27.00, y: 43.75, width: 2.00, side: south}
-  - {room: room_69, x: -10.50, y: 43.75, width: 2.00, side: south}
-  - {room: room_70, x: 4.00, y: 43.75, width: 2.00, side: south}
-  - {room: room_71, x: 28.00, y: 43.75, width: 2.00, side: south}
-  - {room: room_72, x: 44.50, y: 43.75, width: 2.00, side: south}
+  - {room: room_0, x: -27.00, y: -30.25, width: 2.00, side: north}
+  - {room: room_1, x: 0.00, y: -30.25, width: 2.00, side: north}
+  - {room: room_2, x: 19.00, y: -30.25, width: 2.00, side: north}
+  - {room: room_3, x: 26.00, y: -30.25, width: 2.00, side: north}
+  - {room: room_4, x: 34.00, y: -30.25, width: 2.00, side: north}
+  - {room: room_5, x: -27.00, y: -24.75, width: 2.00, side: south}
+  - {room: room_6, x: -8.50, y: -24.75, width: 2.00, side: south}
+  - {room: room_7, x: -0.50, y: -24.75, width: 2.00, side: south}
+  - {room: room_8, x: 8.00, y: -24.75, width: 2.00, side: south}
+  - {room: room_9, x: 19.50, y: -24.75, width: 2.00, side: south}
+  - {room: room_10, x: 25.50, y: -24.75, width: 2.00, side: south}
+  - {room: room_11, x: 33.00, y: -24.75, width: 2.00, side: south}
+  - {room: room_12, x: -33.50, y: -11.75, width: 2.00, side: north}
+  - {room: room_13, x: -25.50, y: -11.75, width: 2.00, side: north}
+  - {room: room_14, x: -19.00, y: -11.75, width: 2.00, side: north}
+  - {room: room_15, x: -8.00, y: -11.75, width: 2.00, side: north}
+  - {room: room_16, x: -1.00, y: -11.75, width: 2.00, side: north}
+  - {room: room_17, x: 7.00, y: -11.75, width: 2.00, side: north}
+  - {room: room_18, x: 26.50, y: -11.75, width: 2.00, side: north}
+  - {room: room_19, x: -33.00, y: -8.25, width: 2.00, side: south}
+  - {room: room_20, x: -25.00, y: -8.25, width: 2.00, side: south}
+  - {room: room_21, x: -19.00, y: -8.25, width: 2.00, side: south}
+  - {room: room_22, x: -7.00, y: -8.25, width: 2.00, side: south}
+  - {room: room_23, x: 5.50, y: -8.25, width: 2.00, side: south}
+  - {room: room_24, x: 18.50, y: -8.25, width: 2.00, side: south}
+  - {room: room_25, x: 26.00, y: -8.25, width: 2.00, side: south}
+  - {room: room_26, x: 34.00, y: -8.25, width: 2.00, side: south}
+  - {room: room_27, x: -35.00, y: 7.25, width: 2.00, side: north}
+  - {room: room_28, x: -29.50, y: 7.25, width: 2.00, side: north}
+  - {room: room_29, x: -21.50, y: 7.25, width: 2.00, side: north}
+  - {room: room_30, x: 0.00, y: 7.25, width: 2.00, side: north}
+  - {room: room_31, x: 26.50, y: 7.25, width: 2.00, side: north}
+  - {room: room_32, x: -27.00, y: 10.25, width: 2.00, side: south}
+  - {room: room_33, x: -7.00, y: 10.25, width: 2.00, side: south}
+  - {room: room_34, x: 1.00, y: 10.25, width: 2.00, side: south}
+  - {room: room_35, x: 8.00, y: 10.25, width: 2.00, side: south}
+  - {room: room_36, x: 26.50, y: 10.25, width: 2.00, side: south}
+  - {room: room_37, x: -27.00, y: 26.25, width: 2.00, side: north}
+  - {room: room_38, x: -9.00, y: 26.25, width: 2.00, side: north}
+  - {room: room_39, x: 3.50, y: 26.25, width: 2.00, side: north}
+  - {room: room_40, x: 26.50, y: 26.25, width: 2.00, side: north}
+  - {room: room_41, x: -27.00, y: 29.75, width: 2.00, side: south}
+  - {room: room_42, x: -9.00, y: 29.75, width: 2.00, side: south}
+  - {room: room_43, x: 4.00, y: 29.75, width: 2.00, side: south}
+  - {room: room_44, x: 26.50, y: 29.75, width: 2.00, side: south}

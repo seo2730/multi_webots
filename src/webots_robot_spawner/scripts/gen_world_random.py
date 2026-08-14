@@ -13,16 +13,22 @@ gen_world.py 의 창고형은 **결정적**이다 — 크기가 같으면 항상
 
 그래서 이 스크립트도 그 순서로 만든다:
 
-    1. 가로 주복도를 n 개 놓는다 (층을 가로지르는 긴 복도)
-    2. 세로 연결복도로 주복도들을 잇는다
-    3. 복도 양옆 띠를 방으로 잘라 붙인다 — 학교 도면의 교실 줄과 같은 배치
-    4. 방마다 복도 쪽 벽에 출입구를 뚫는다 (문짝은 없다)
-    5. 방 안에만 상자·팔레트를 뿌린다
-    6. 격자를 큰 사각형으로 합쳐 Box 로 내보낸다
+    1. 부지 안쪽에 건물 자리를 잡는다 (둘레는 바깥 땅으로 남긴다)
+    2. 가로 주복도를 n 개 놓는다 (층을 가로지르는 긴 복도)
+    3. 세로 연결복도로 주복도들을 잇는다
+    4. 복도 끝이 외피와 만나는 자리에 외부 출입구를 뚫는다
+    5. 복도 양옆 띠를 방으로 잘라 붙인다 — 학교 도면의 교실 줄과 같은 배치
+    6. 방마다 복도 쪽 벽에 출입구를 뚫는다 (문짝은 없다)
+    7. 방 안과 바깥 땅에 상자·팔레트를 뿌린다 (복도는 비운다)
+    8. 격자를 큰 사각형으로 합쳐 Box 로 내보낸다
 
 이 순서 덕분에 **연결성이 구조적으로 보장된다.** 모든 방은 복도에 면하고, 모든
-복도는 연결복도로 이어져 있다. 나중에 검사해서 고치는 게 아니라 만들 때부터
-이어져 있다.
+복도는 연결복도로 이어져 있으며, 바깥 땅은 복도 끝으로 건물과 이어진다.
+나중에 검사해서 고치는 게 아니라 만들 때부터 이어져 있다.
+
+바깥 땅에도 물건을 좀 뿌리는 건 취향이 아니라 필요다. 텅 빈 평면은 라이다에
+걸리는 게 없어 SLAM 이 미끄러진다. 부지 둘레에는 울타리를 세워 로봇이 바닥
+밖으로 떨어지지 않게 한다.
 
 방 크기는 한 가지로 고정하지 않는다. 띠 깊이를 시드마다 흔들고 방 폭도 편차를
 크게 줘서, 강당처럼 큰 방과 창고처럼 작은 방이 같이 나온다.
@@ -50,6 +56,12 @@ config/doorways/NAME.yaml 로 따로 저장한다. 방 사이를 오가는 경�
       --name NAME     worlds/NAME.wbt (매니페스트도 같은 이름)
       --cell M        격자 한 칸(m). 기본 0.5. 작을수록 세밀하지만 박스가 늘어난다
 
+      --yard M        건물 둘레에 남길 바깥 땅 폭(m). 기본 12. 0 이면 건물이
+                      부지를 꽉 채운다 (예전 동작)
+      --entrances N   바깥에서 건물로 들어오는 출입구 개수. 0 = 자동.
+                      **복도 끝에만 낸다** — 아무 벽이나 뚫으면 들어오자마자
+                      방 하나에 갇힌다
+      --fence-h H     부지 울타리 높이(m). 기본 2
       --corridors N   가로 주복도 개수. 0 = 크기에 맞게 자동
       --links N       세로 연결복도 개수. 0 = 크기에 맞게 자동
       --rooms N       방 개수 목표. 0 = 크기에 맞게 자동.
@@ -60,7 +72,9 @@ config/doorways/NAME.yaml 로 따로 저장한다. 방 사이를 오가는 경�
       --link-w M      연결복도 폭(m). 기본 2.5
       --door M        출입구 폭(m). 기본 1.8
 
-      --density D     장애물 밀도 (방 면적 100 m2 당 개수). 기본 6. 0 이면 없음
+      --density D     실내 장애물 밀도 (방 면적 100 m2 당 개수). 기본 6. 0 이면 없음
+      --yard-density D  마당 장애물 밀도. 기본 -1 = --density 의 35%.
+                      실내와 같게 두면 마당이 고물상이 된다
       --wall-h H      벽 높이(m). 기본 3
       --min-door M    출입구로 인정할 최소 폭(m). 기본 1.2
       --robot-w M     지나다닐 로봇 폭(m). 기본 0.72 (SummitXL). 상자를 놓을 때
@@ -134,30 +148,33 @@ def split_widths(total, k, min_w, rng):
     return parts
 
 
-def plan_building(n, rng, n_corr, n_link, target_rooms,
-                  cw, lw, door_w, room_min):
+def plan_building(bh, bw, rng, n_corr, n_link, target_rooms,
+                  cw, lw, door_w, room_min, n_entrance):
     """복도를 먼저 놓고 그 양옆에 방을 붙이는 건물식 배치.
 
     벽을 '그린다'. 빈 판에서 시작해 선을 그으면 방이 저절로 생긴다. 반대로
     벽에서 시작해 방을 파내면 벽 두께를 맞추기가 훨씬 성가시다.
 
-    돌려주는 것: (grid, rooms, doors, corridors)
-      grid       True = 벽
+    좌표는 **건물 안에서만** 센다. 부지(바깥 땅)에 붙이는 일은 부르는 쪽이 한다.
+
+    돌려주는 것: (grid, rooms, doors, corridors, entrances)
+      grid       True = 벽. 바깥 한 줄이 건물 외피다
       rooms      [(x0, y0, x1, y1)] 방 내부 (반열림 구간)
       doors      [(방 번호, gy, gx, 폭칸수, 방향)]
       corridors  [(x0, y0, x1, y1)] 복도 내부 — 순찰 경로용
+      entrances  [(side, gy, gx, 폭칸수)] 외피에 뚫은 외부 출입구
     """
-    grid = np.zeros((n, n), dtype=bool)          # False = 자유공간
-    grid[0, :] = grid[-1, :] = grid[:, 0] = grid[:, -1] = True
+    grid = np.zeros((bh, bw), dtype=bool)        # False = 자유공간
+    grid[0, :] = grid[-1, :] = grid[:, 0] = grid[:, -1] = True   # 건물 외피
 
     # --- ① 세로 연결복도 자리부터 잡는다 (방을 자를 구간이 여기서 갈린다) ---
     links = []
     for i in range(n_link):
-        c = int(round((n - 1) * (i + 1) / (n_link + 1)))
-        jit = (n - 2) // (8 * (n_link + 1))
+        c = int(round((bw - 1) * (i + 1) / (n_link + 1)))
+        jit = (bw - 2) // (8 * (n_link + 1))
         if jit > 0:
             c += rng.randint(-jit, jit)
-        a = max(2, min(n - 2 - lw, c - lw // 2))
+        a = max(2, min(bw - 2 - lw, c - lw // 2))
         links.append((a, a + lw))
     links.sort()
 
@@ -168,8 +185,8 @@ def plan_building(n, rng, n_corr, n_link, target_rooms,
     bounds, acc = [0], 0.0
     for w in weights:
         acc += w
-        bounds.append(int(round((n - 1) * acc / tot)))
-    bounds[-1] = n - 1
+        bounds.append(int(round((bh - 1) * acc / tot)))
+    bounds[-1] = bh - 1
 
     # 복도 폭도 하나로 고정하지 않는다 — 넓은 주동선 하나에 좁은 복도 여럿이
     # 실제 건물의 모습이다.
@@ -196,7 +213,7 @@ def plan_building(n, rng, n_corr, n_link, target_rooms,
 
     def hwall(row):
         """가로 벽 한 줄. 연결복도가 지나는 열은 터놓는다."""
-        grid[row, 1:n - 1] = True
+        grid[row, 1:bw - 1] = True
         for a, b in links:
             grid[row, a:b] = False
 
@@ -208,23 +225,58 @@ def plan_building(n, rng, n_corr, n_link, target_rooms,
 
     # 연결복도 옆벽 — 가로 복도와 만나는 행은 터놓아야 갈아탈 수 있다
     for a, b in links:
-        for row in range(1, n - 1):
+        for row in range(1, bh - 1):
             if row in corridor_rows:
                 continue
             grid[row, a - 1] = True
             grid[row, b] = True
 
-    corridors = [(1, wa + 1, n - 1, wb) for (_, wa, wb, _) in strips]
-    corridors += [(a, 1, b, n - 1) for a, b in links]
+    corridors = [(1, wa + 1, bw - 1, wb) for (_, wa, wb, _) in strips]
+    corridors += [(a, 1, b, bh - 1) for a, b in links]
 
-    # --- ③ 방을 자를 x 구간 (연결복도 사이사이) ---
+    # --- ③ 외부 출입구: 복도 끝이 외피와 만나는 자리에만 낸다 ---
+    # 아무 벽이나 뚫으면 들어오자마자 방 하나에 갇힌다. 복도 끝을 열어야
+    # 진입 즉시 동선에 붙어 건물 어디로든 갈 수 있다.
+    cand = []
+    for (_, wa, wb, _) in strips:                       # 가로 복도의 동/서 끝
+        cand.append(('west', slice(wa + 1, wb), 0, wb - wa - 1))
+        cand.append(('east', slice(wa + 1, wb), bw - 1, wb - wa - 1))
+    for a, b in links:                                  # 연결복도의 남/북 끝
+        cand.append(('south', 0, slice(a, b), b - a))
+        cand.append(('north', bh - 1, slice(a, b), b - a))
+
+    # 한쪽 면에 몰리지 않게 면을 돌아가며 뽑는다
+    by_side = {}
+    for c in cand:
+        by_side.setdefault(c[0], []).append(c)
+    for v in by_side.values():
+        rng.shuffle(v)
+    order, sides = [], sorted(by_side)
+    rng.shuffle(sides)
+    while any(by_side[s] for s in sides):
+        for s in sides:
+            if by_side[s]:
+                order.append(by_side[s].pop())
+
+    entrances = []
+    for (side, rsel, csel, width) in order[:n_entrance]:
+        if side in ('west', 'east'):
+            grid[rsel, csel] = False
+            entrances.append((side, (rsel.start + rsel.stop - 1) / 2.0,
+                              float(csel), width))
+        else:
+            grid[rsel, csel] = False
+            entrances.append((side, float(rsel),
+                              (csel.start + csel.stop - 1) / 2.0, width))
+
+    # --- ④ 방을 자를 x 구간 (연결복도 사이사이) ---
     segments, x = [], 1
     for a, b in links:
         if a - 1 > x:
             segments.append((x, a - 1))
         x = b + 1
-    if n - 1 > x:
-        segments.append((x, n - 1))
+    if bw - 1 > x:
+        segments.append((x, bw - 1))
 
     rows_list = []
     for (row_a, _, _, row_b) in strips:
@@ -295,7 +347,7 @@ def plan_building(n, rng, n_corr, n_link, target_rooms,
                               'south' if side == 'north' else 'north'))
             x = rx1
 
-    return grid, rooms, doors, corridors
+    return grid, rooms, doors, corridors, entrances
 
 
 def clearance_map(free, max_k):
@@ -420,7 +472,11 @@ def main():
     ap.add_argument('--corridor', type=float, default=3.0)
     ap.add_argument('--link-w', type=float, default=2.5)
     ap.add_argument('--door', type=float, default=1.8)
+    ap.add_argument('--entrances', type=int, default=0)
+    ap.add_argument('--yard', type=float, default=12.0)
+    ap.add_argument('--fence-h', type=float, default=2.0)
     ap.add_argument('--density', type=float, default=6.0)
+    ap.add_argument('--yard-density', type=float, default=-1.0)
     ap.add_argument('--wall-h', type=float, default=3.0)
     ap.add_argument('--min-door', type=float, default=1.2)
     ap.add_argument('--robot-w', type=float, default=0.72)
@@ -438,29 +494,59 @@ def main():
     room_min = max(3, int(round(args.room_min / cell)))
     min_door = max(1, int(round(args.min_door / cell)))
 
-    # --- 복도 개수: 지정 없으면 방 깊이 기준으로 크기에 맞게 정한다 ---
+    # --- 부지: 건물을 안쪽으로 물려 놓고 둘레를 바깥 땅으로 남긴다 ---
+    yard = max(0, int(round(args.yard / cell)))
+    if n - 2 * yard < 40:                       # 건물이 20 m 밑이면 배치가 안 선다
+        yard = max(0, (n - 40) // 2)
+        print(f'  ⚠️ 바깥 땅이 너무 넓어 건물이 안 들어갑니다 '
+              f'-> --yard {yard * cell:.0f} m 로 줄였습니다')
+    bh = bw = n - 2 * yard
+
+    # --- 복도 개수: 지정 없으면 방 깊이 기준으로 건물 크기에 맞게 정한다 ---
     depth = max(MIN_ROOM_DEPTH, int(round(args.room_depth / cell)))
     strip = 2 * depth + cw + 3                  # 띠 하나가 먹는 높이
-    n_corr = args.corridors or max(1, int(round((n - 1) / float(strip))))
+    n_corr = args.corridors or max(1, int(round((bh - 1) / float(strip))))
     asked_corr = n_corr
-    n_corr = min(n_corr, max(1, (n - 1) // (2 * MIN_ROOM_DEPTH + cw + 3)))
-    n_link = args.links or max(1, min(4, int(round(args.size / 45.0))))
+    n_corr = min(n_corr, max(1, (bh - 1) // (2 * MIN_ROOM_DEPTH + cw + 3)))
+    n_link = args.links or max(1, min(4, int(round(bw * cell / 45.0))))
     if n_corr > 1:
         n_link = max(1, n_link)                 # 복도끼리 이어져야 한다
 
-    plan = plan_building(n, rng, n_corr, n_link, args.rooms,
-                         cw, lw, door_w, room_min)
+    # 외부 출입구가 하나도 없으면 바깥 땅이 건물과 끊긴다 — 최소 1개는 낸다
+    n_entrance = args.entrances or max(1, min(4, n_corr))
+    n_entrance = max(1, min(n_entrance, 2 * n_corr + 2 * n_link))
+
+    def build(nc):
+        return plan_building(bh, bw, rng, nc, n_link, args.rooms,
+                             cw, lw, door_w, room_min, n_entrance)
+
+    plan = build(n_corr)
     while plan is None and n_corr > 1:          # 띠가 얇으면 복도를 줄여 다시
         n_corr -= 1
-        plan = plan_building(n, rng, n_corr, n_link, args.rooms,
-                             cw, lw, door_w, room_min)
+        plan = build(n_corr)
     if plan is None:
         print('  ❌ 이 크기에는 복도 하나도 못 넣습니다. --size 를 키우세요')
         return 1
     if n_corr != asked_corr:
-        print(f'  ⚠️ 주복도 {asked_corr}개는 {args.size:.0f} m 에 안 들어갑니다 '
+        print(f'  ⚠️ 주복도 {asked_corr}개는 건물 {bh * cell:.0f} m 에 안 들어갑니다 '
               f'-> {n_corr}개로 줄였습니다')
-    grid, rooms, doors, corridors = plan
+    bgrid, rooms, doors, corridors, entrances = plan
+
+    # --- 건물을 부지에 앉힌다 ---
+    grid = np.zeros((n, n), dtype=bool)
+    grid[yard:yard + bh, yard:yard + bw] = bgrid
+    fence = np.zeros((n, n), dtype=bool)
+    if yard > 0:                                # 부지 울타리 (로봇이 떨어지지 않게)
+        fence[0, :] = fence[-1, :] = fence[:, 0] = fence[:, -1] = True
+        grid |= fence
+
+    def off_rect(r):
+        return (r[0] + yard, r[1] + yard, r[2] + yard, r[3] + yard)
+
+    rooms = [off_rect(r) for r in rooms]
+    corridors = [off_rect(c) for c in corridors]
+    doors = [(i, gy + yard, gx + yard, w, s) for (i, gy, gx, w, s) in doors]
+    entrances = [(s, gy + yard, gx + yard, w) for (s, gy, gx, w) in entrances]
 
     free = ~grid
     reach = largest_component(free)
@@ -476,47 +562,69 @@ def main():
     for (_, gy, gx, _, _) in doors:
         gxi, r = int(round(gx)), cw
         keepout[max(0, gy - r):gy + r + 1, max(0, gxi - r):gxi + r + 1] = True
+    for (_, gy, gx, w) in entrances:            # 외부 출입구 앞도 비워 둔다
+        gyi, gxi, r = int(round(gy)), int(round(gx)), max(cw, w)
+        keepout[max(0, gyi - r):gyi + r + 1, max(0, gxi - r):gxi + r + 1] = True
 
-    # --- 장애물 산포: 방 안에만 ---
+    # --- 장애물 산포: 방 안과 바깥 땅에만 (복도는 비워 둔다) ---
+    # 바깥을 텅 빈 평면으로 두면 라이다에 걸리는 게 없어 SLAM 이 미끄러진다.
+    # 야적장처럼 물건이 좀 있어야 밖에서도 지도가 만들어진다.
     room_mask = np.zeros(grid.shape, dtype=bool)
     for (rx0, ry0, rx1, ry1) in rooms:
         room_mask[ry0:ry1, rx0:rx1] = True
+    outdoor = np.zeros(grid.shape, dtype=bool)
+    if yard > 0:
+        outdoor[:] = True
+        outdoor[yard:yard + bh, yard:yard + bw] = False
 
     obstacles = []
     taken = np.zeros(grid.shape, dtype=bool)
+    # owner[y, x] = 그 칸을 차지한 장애물 번호 (-1 = 없음).
+    # 나중에 연결성을 고칠 때 **장애물 단위로** 빼야 해서 필요하다.
+    owner = np.full(free.shape, -1, dtype=np.int32)
     if args.density > 0:
-        cl = clearance_map(free, 6)
-        cl[keepout] = 0                         # 출입구 목은 후보에서 뺀다
-        cl[~room_mask] = 0                      # 복도는 비워 둔다
-        want = int(room_mask.sum() * cell * cell / 100.0 * args.density)
+        base = clearance_map(free, 6)
+        base[keepout] = 0                       # 출입구 목은 후보에서 뺀다
         # 상자를 놓아도 옆으로 pass 칸만큼은 남아야 한다. clearance k 인 칸에
         # 반경 half 짜리 상자를 놓으면 가장 가까운 벽까지 (k - half) 칸이 남으므로
         # half <= k - pass 로 묶는다. 이 제약이 없으면 3 m 복도 한가운데 1.5 m 상자가
         # 들어가 양옆 0.75 m 만 남고, 폭 0.72 m 로봇에겐 사실상 막힌 길이 된다.
         pass_cells = max(2, int(np.ceil((args.robot_w + 2 * 0.15) / cell)))
-        cand = np.argwhere(cl >= pass_cells + 1)
-        idx = list(range(len(cand)))
-        rng.shuffle(idx)
-        # owner[y, x] = 그 칸을 차지한 장애물 번호 (-1 = 없음).
-        # 나중에 연결성을 고칠 때 **장애물 단위로** 빼야 해서 필요하다.
-        owner = np.full(free.shape, -1, dtype=np.int32)
-        for i in idx:
-            if len(obstacles) >= want:
-                break
-            gy, gx = cand[i]
-            k = int(cl[gy, gx])
-            half = rng.randint(1, k - pass_cells)
-            y0, y1 = gy - half, gy + half + 1
-            x0, x1 = gx - half, gx + half + 1
-            if (owner[y0 - pass_cells:y1 + pass_cells,
-                      x0 - pass_cells:x1 + pass_cells] >= 0).any():
-                continue
-            owner[y0:y1, x0:x1] = len(obstacles)
-            obstacles.append((
-                (gx + 0.5) * cell - args.size / 2,
-                (gy + 0.5) * cell - args.size / 2,
-                (x1 - x0) * cell, (y1 - y0) * cell,
-                rng.uniform(0.4, 1.2)))
+
+        def scatter(mask, density):
+            """mask 안에 density (100 m2 당 개수) 만큼 뿌린다."""
+            cl = base.copy()
+            cl[~mask] = 0                       # 복도는 비워 둔다
+            want = int(mask.sum() * cell * cell / 100.0 * density)
+            cand = np.argwhere(cl >= pass_cells + 1)
+            idx = list(range(len(cand)))
+            rng.shuffle(idx)
+            placed = 0
+            for i in idx:
+                if placed >= want:
+                    break
+                gy, gx = cand[i]
+                k = int(cl[gy, gx])
+                half = rng.randint(1, k - pass_cells)
+                y0, y1 = gy - half, gy + half + 1
+                x0, x1 = gx - half, gx + half + 1
+                if (owner[y0 - pass_cells:y1 + pass_cells,
+                          x0 - pass_cells:x1 + pass_cells] >= 0).any():
+                    continue
+                owner[y0:y1, x0:x1] = len(obstacles)
+                obstacles.append((
+                    (gx + 0.5) * cell - args.size / 2,
+                    (gy + 0.5) * cell - args.size / 2,
+                    (x1 - x0) * cell, (y1 - y0) * cell,
+                    rng.uniform(0.4, 1.2)))
+                placed += 1
+
+        scatter(room_mask, args.density)
+        if outdoor.any():
+            # 마당은 건물 안보다 성기게. 실내 밀도를 그대로 쓰면 고물상이 된다.
+            yd = args.density * 0.35 if args.yard_density < 0 else args.yard_density
+            if yd > 0:
+                scatter(outdoor, yd)
 
         # --- 연결성 복구 ---
         # 장애물이 방 구석을 막아 주머니를 만들 수 있다. 경고만 하고 넘어가면 로봇이
@@ -548,9 +656,15 @@ def main():
         taken = owner >= 0
 
     # --- 벽 격자를 사각형으로 합치기 ---
-    rects = merge_rectangles(grid, min_cells=1)
+    # 울타리는 높이가 달라서 따로 뺀다 (어차피 네 변이라 합칠 것도 없다)
+    rects = merge_rectangles(grid & ~fence, min_cells=1)
 
-    parts = [solid('floor', 0, 0, -0.05, args.size, args.size, 0.1, (0.42, 0.44, 0.47))]
+    parts = [solid('ground', 0, 0, -0.05, args.size, args.size, 0.1,
+                   (0.34, 0.33, 0.30))]                     # 바깥 땅
+    if yard > 0:
+        bsize = bw * cell
+        parts.append(solid('building_floor', 0, 0, -0.015, bsize, bsize, 0.03,
+                           (0.46, 0.47, 0.50)))             # 건물 바닥
     for i, (c0, r0, c1, r1) in enumerate(rects):
         sx = (c1 - c0 + 1) * cell
         sy = (r1 - r0 + 1) * cell
@@ -558,6 +672,14 @@ def main():
         cy = (r0 + r1 + 1) / 2.0 * cell - args.size / 2
         parts.append(solid(f'wall_{i}', cx, cy, args.wall_h / 2,
                            sx, sy, args.wall_h, (0.70, 0.70, 0.68)))
+
+    if yard > 0:
+        half = args.size / 2 - cell / 2
+        for i, (cx, cy, sx, sy) in enumerate((
+                (0, -half, args.size, cell), (0, half, args.size, cell),
+                (-half, 0, cell, args.size), (half, 0, cell, args.size))):
+            parts.append(solid(f'fence_{i}', cx, cy, args.fence_h / 2,
+                               sx, sy, args.fence_h, (0.55, 0.55, 0.52)))
 
     for i, (cx, cy, sx, sy, hgt) in enumerate(obstacles):
         # 상자/팔레트 느낌으로 색을 조금 흔든다
@@ -594,10 +716,14 @@ def main():
     per_room = [find_doorways(passable, r, cell, args.size, min_door) for r in rooms]
     blocked_rooms = [i for i, d in enumerate(per_room) if not d]
     n_doors = sum(len(d) for d in per_room)
-    print(f'  출입구 {n_doors}개 (최소 폭 {args.min_door:.1f} m)')
+    print(f'  방 출입구 {n_doors}개 (최소 폭 {args.min_door:.1f} m)')
     if blocked_rooms:
         print(f'  ⚠️ 출입구를 못 찾은 방 {len(blocked_rooms)}개 — --density 를 낮추거나 '
               f'--door 를 키워 보세요')
+    if yard > 0:
+        print(f'  바깥 땅 {yard * cell:.0f} m 띠, 건물 {bw * cell:.0f} x {bh * cell:.0f} m, '
+              f'외부 출입구 {len(entrances)}개 '
+              f'({", ".join(s for s, _, _, _ in entrances)})')
 
     if not args.no_doorways:
         DOOR_DIR.mkdir(parents=True, exist_ok=True)
@@ -617,6 +743,22 @@ def main():
             f'world: {name}',
             f'cell: {cell}',
             f'min_door_width: {args.min_door}',
+            f'yard: {yard * cell:.2f}',
+            f'building: [{bw * cell:.2f}, {bh * cell:.2f}]',
+            '',
+            '# 바깥에서 건물로 들어오는 곳. 복도 끝이라 진입 즉시 동선에 붙는다.',
+            '# side 는 건물을 기준으로 한 방향이다.',
+            'entrances:',
+        ]
+        for (side, gy, gx, w) in entrances:
+            dlines.append(
+                f'  - {{x: {(gx + 0.5) * cell - args.size / 2:.2f}, '
+                f'y: {(gy + 0.5) * cell - args.size / 2:.2f}, '
+                f'width: {w * cell:.2f}, side: {side}}}')
+        if not entrances:
+            dlines[-1] = 'entrances: []'
+
+        dlines += [
             '',
             '# 복도 중심선 — 순찰이나 광역 이동 경로를 짤 때 쓴다',
             'corridors:',

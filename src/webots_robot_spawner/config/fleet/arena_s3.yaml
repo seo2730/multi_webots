@@ -4,9 +4,9 @@
 # 지형이 시드마다 다르므로 손으로 고르면 벽 속에 로봇을 놓기 쉽다.
 
 fleet:
-  - {type: ugv, id: ugv1, x: -25.25, y: -23.75, yaw: 0.0}
-  - {type: ugv, id: ugv2, x: 35.75, y: -22.75, yaw: 0.0}
-  - {type: spot, id: spot1, x: 3.25, y: 23.75, yaw: 0.0}
-  - {type: drone, id: drone1, x: -14.75, y: 23.25, yaw: 0.0}
+  - {type: ugv, id: ugv1, x: -14.25, y: -28.75, yaw: 0.0}
+  - {type: ugv, id: ugv2, x: 8.25, y: -28.25, yaw: 0.0}
+  - {type: spot, id: spot1, x: 7.25, y: 27.75, yaw: 0.0}
+  - {type: drone, id: drone1, x: -24.75, y: 28.25, yaw: 0.0}
 
 spawn_area: [-48.0, -48.0, 48.0, 48.0]
