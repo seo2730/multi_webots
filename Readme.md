@@ -588,7 +588,7 @@ spawn_area: [-9.0, -6.0, 9.0, 7.0]              # random 배치 영역
 
 | 스크립트 | 용도 |
 |---|---|
-| [gen_world_random.py](src/webots_robot_spawner/scripts/gen_world_random.py) | **시드마다 다른** 방·복도 + 장애물 산포 |
+| [gen_world_random.py](src/webots_robot_spawner/scripts/gen_world_random.py) | **시드마다 다른 건물** — 복도 + 방 + 장애물 산포 |
 | [gen_world.py](src/webots_robot_spawner/scripts/gen_world.py) | 넓은 작전 지역을 처음부터 생성 (창고형, 결정적) |
 | [gen_world_from_map.py](src/webots_robot_spawner/scripts/gen_world_from_map.py) | SLAM 맵·건물 도면(점유격자) → 월드 |
 | [prepare_world.py](src/webots_robot_spawner/scripts/prepare_world.py) | 밖에서 가져온 `.wbt`를 소환 가능 상태로 |
