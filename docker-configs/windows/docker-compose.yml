@@ -42,7 +42,7 @@ x-ros-common: &ros-common
 
 services:
 # >>> FLEET GENERATED — gen_fleet_compose.py 가 관리한다. 직접 고치지 말 것
-  # 매니페스트: config/fleet/warehouse100.yaml  (로봇 4대)
+  # 매니페스트: config/fleet/default.yaml  (로봇 4대)
   #
   # 몸은 fleet 컨테이너의 소환기가 Webots 에 주입하고, 뇌(driver/SLAM/Nav2)는
   # 아래 컨테이너들이 담당한다.
@@ -65,9 +65,9 @@ services:
       - WEBOTS_HOST=host.docker.internal
       - WEBOTS_PORT=1234
       - ROBOT_ID=ugv1
-      - ROBOT_INIT_X=-47.000
-      - ROBOT_INIT_Y=-47.000
-      - ROBOT_INIT_YAW=0.000
+      - ROBOT_INIT_X=-6.159
+      - ROBOT_INIT_Y=1.263
+      - ROBOT_INIT_YAW=-2.910
       - ROBOT_SYNCHRONIZATION=false
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
@@ -88,9 +88,9 @@ services:
       - WEBOTS_HOST=host.docker.internal
       - WEBOTS_PORT=1234
       - ROBOT_ID=ugv2
-      - ROBOT_INIT_X=47.000
-      - ROBOT_INIT_Y=-47.000
-      - ROBOT_INIT_YAW=0.000
+      - ROBOT_INIT_X=8.376
+      - ROBOT_INIT_Y=1.373
+      - ROBOT_INIT_YAW=-0.064
       - ROBOT_SYNCHRONIZATION=false
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
@@ -111,8 +111,8 @@ services:
       - WEBOTS_HOST=host.docker.internal
       - WEBOTS_PORT=1234
       - ROBOT_ID=spot1
-      - ROBOT_INIT_X=47.000
-      - ROBOT_INIT_Y=47.000
+      - ROBOT_INIT_X=-0.840
+      - ROBOT_INIT_Y=-0.340
       - ROBOT_INIT_YAW=0.000
       - ROBOT_SYNCHRONIZATION=false
       - ROBOT_DEF=SPOT1
@@ -135,8 +135,8 @@ services:
       - WEBOTS_HOST=host.docker.internal
       - WEBOTS_PORT=1234
       - ROBOT_ID=drone1
-      - ROBOT_INIT_X=-47.000
-      - ROBOT_INIT_Y=47.000
+      - ROBOT_INIT_X=-6.500
+      - ROBOT_INIT_Y=5.500
       - ROBOT_INIT_YAW=0.000
       - ROBOT_SYNCHRONIZATION=true
     command: >
@@ -188,7 +188,7 @@ services:
       - WEBOTS_PORT=1234
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
-               ros2 launch webots_robot_spawner spawner.launch.py fleet:=warehouse100.yaml manifest_brains:=false"
+               ros2 launch webots_robot_spawner spawner.launch.py fleet:=default.yaml manifest_brains:=false"
     # 🩺 소환기가 편대 몸을 다 확정하면 /tmp/fleet_ready 를 만든다. 로봇별 컨테이너는
     #    이 헬스체크가 통과할 때까지 기다린다 (condition: service_healthy).
     #    안 기다리면 드라이버가 옛 몸에 붙은 직후 그 몸이 지워져 드라이버가 죽는다.

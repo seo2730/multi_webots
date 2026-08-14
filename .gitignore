@@ -4,3 +4,7 @@
 # 파이썬 바이트코드 (스크립트를 컨테이너에서 돌릴 때 생김)
 __pycache__/
 *.pyc
+
+# Claude Code 개인 설정 (사람마다 다르고 절대경로/임시경로가 들어간다).
+# 공유용 설정은 .claude/settings.json 쪽에 넣는다.
+.claude/settings.local.json

@@ -1,0 +1,16 @@
+# arena150 월드용 편대 — gen_world.py 가 함께 생성했다.
+#
+# 좌표는 생성기가 아는 빈 곳(둘레 통로)에서 골랐다. 손으로 고르면
+# 선반 안에 로봇을 놓기 쉽다.
+#
+#   ros2 launch webots_robot_spawner spawner.launch.py fleet:=arena150.yaml
+
+fleet:
+  - {type: ugv, id: ugv1, x: -72.00, y: -72.00, yaw: 0.0}
+  - {type: ugv, id: ugv2, x: 72.00, y: -72.00, yaw: 0.0}
+  - {type: spot, id: spot1, x: 72.00, y: 72.00, yaw: 0.0}
+  - {type: drone, id: drone1, x: -72.00, y: 72.00, yaw: 0.0}
+
+# 무작위 배치 영역: 둘레 통로 안쪽. 맵이 생기기 전에는 로봇 간 간격만 보므로
+# 선반이 있는 안쪽까지 넣지 않는다.
+spawn_area: [-71.0, -71.0, 71.0, 71.0]
