@@ -35,10 +35,15 @@
 - [12. 로봇 소환 (Runtime Spawn)](#12-로봇-소환-runtime-spawn)
   - [12-1. 소환하기](#12-1-소환하기)
   - [12-2. 편대 매니페스트](#12-2-편대-매니페스트)
+  - [12-2-1. 새 월드를 만들어 편대를 올리기까지](#12-2-1-새-월드를-만들어-편대를-올리기까지)
   - [12-3. 구조 (몸 / 뇌 / 컨테이너)](#12-3-구조-몸--뇌--컨테이너)
+  - [12-3-1. 기동 순서 (왜 드론만 다른가)](#12-3-1-기동-순서-왜-드론만-다른가)
   - [12-4. 주의사항 / 트러블슈팅](#12-4-주의사항--트러블슈팅)
 - [향후 계획](#향후-계획)
 - [참고 문서 (References)](#참고-문서-references)
+
+> 📖 별도 문서: **[WORLD_GEN.md](WORLD_GEN.md)** (월드 생성 — 무작위 방/복도 포함, OS별 명령어) ·
+> [MAP_MERGE.md](MAP_MERGE.md) (지도 병합) · [drone_setup.md](drone_setup.md) (드론)
 
 ## 0. 사전 요구 사항 (Prerequisites)
 - 호스트 장치 운영체제 : 윈도우, Mac, **Ubuntu(리눅스, 신규 지원)**
@@ -226,11 +231,18 @@ export ROS_LOCALHOST_ONLY=0
   즉 `ugv1`과 `ugv2`는 서로 다른 좌표계를 쓰며, 한 로봇의 좌표를 다른 로봇에 그대로 써도 안 맞음.
 - **목표점 좌표는 각 로봇 자신의 map 프레임 기준.** 다만 이 프로젝트에서 **각 로봇의 `{ns}/map` 원점은 사실상 Webots 월드 원점과 같다.** Webots 드라이버가 `odom → base_link`를 GPS 원값(= 월드 절대좌표)으로 발행하기 때문 ([robot_driver.py:117-119](src/Webots-SummitXL/workspace/simulator/simulator/robot_driver.py#L117-L119)). 즉 좌표 **값**은 로봇끼리 사실상 호환되지만, **프레임 이름은 여전히 로봇별로 달라서** `frame_id`는 정확히 맞춰야 함.
   > ⚠️ "map 프레임 원점 = 로봇 스폰 위치"로 오해하기 쉬운데 **아님.** 실제로 이 오해 때문에 맵 병합에서 좌표가 정확히 두 배로 어긋나는 버그가 났었음 ([맵 병합 문서 2장](MAP_MERGE.md#2-정렬-설계--world-앵커-프레임)).
-- **Webots 월드(`my_world.wbt`) 상의 초기 스폰 위치** (참고용, world 절대좌표):
+- **초기 스폰 위치는 이제 월드가 아니라 편대 매니페스트에 있다** (world 절대좌표).
+  `my_world.wbt` 기준값은 [`config/fleet/default.yaml`](src/webots_robot_spawner/config/fleet/default.yaml):
   | 로봇 | world x, y |
   |---|---|
-  | ugv1 | -6.16, 1.26 |
-  | ugv2 | 8.38, 1.37 |
+  | ugv1 | -6.159, 1.263 |
+  | ugv2 | 8.376, 1.373 |
+  | spot1 | -0.840, -0.340 |
+  | drone1 | -6.500, 5.500 |
+
+  다른 월드를 쓰면 그 월드의 매니페스트(`config/fleet/{월드이름}.yaml`)를 본다.
+  무작위 생성 월드는 방·출입구 좌표까지 `config/doorways/`에 함께 나온다
+  ([WORLD_GEN.md](WORLD_GEN.md#3-3-출입구-yaml)).
 - 웹에서 지도 클릭으로 목표점을 보낼 때는 `/web/goal_point`(`geometry_msgs/msg/PointStamped`)로 발행하되, **`frame_id`가 정확히 `{ns}/map`이어야** [web_goal_relay.py](src/webots_goal_bridge/webots_goal_bridge/web_goal_relay.py)가 해당 로봇의 `goal_pose`로 중계함 (다른 frame_id는 무시됨).
 - **전역 병합 맵도 있음.** 마스터 관제 컨테이너가 로봇별 맵을 공통 `world` 프레임 기준으로 합쳐 `/map_merged`(`nav_msgs/msg/OccupancyGrid`)로 발행. 새 로봇이 추가되면 마스터 수정·재시작 없이 자동으로 합류함.
 
@@ -290,14 +302,16 @@ Boston Dynamics Spot을 [seo2730/webots_ros2_spot](https://github.com/seo2730/we
 
 ### 10-1. 사전 준비 (서브모듈 + 월드 설정)
 - 서브모듈 2개 추가됨: `src/webots_ros2_spot`(포크, 다리 제어 코드), `src/webots_spot_msgs`(커스텀 메시지). [2. 설치 및 구성](#2-설치-및-구성-installation)의 `git submodule update --init --recursive`에 이미 포함되어 있어서 별도 조치 불필요.
-- `my_world.wbt`에 이미 아래처럼 세팅되어 있어야 함 (새 월드로 옮기거나 처음부터 구성할 때 참고):
+- 🔄 **이 설정은 이제 월드가 아니라 래퍼 PROTO에 들어 있다.**
+  [`protos/SpotSensorized.proto`](src/Webots-SummitXL/workspace/simulator/protos/SpotSensorized.proto)가
+  아래 구성을 통째로 품고 있고, 월드에는 `IMPORTABLE EXTERNPROTO` 선언만 있으면 된다.
+  소환기가 이 PROTO로 몸을 주입한다. 예전처럼 월드에 인라인 40줄을 박아 둘 필요가 없다.
+  아래는 **그 PROTO가 무엇을 담고 있는지** 보여주는 참고용이다:
   ```
   EXTERNPROTO "../../../../webots_ros2_spot/protos/Spot.proto"
   ...
-  DEF Spot Spot {
-    translation -0.84 -0.34 0.624
-    rotation 0 0 1 0
-    name "spot1"
+  Spot {                      # SpotSensorized 안에서 이렇게 감싼다
+    name "spot1"              # 소환기가 매니페스트의 id 를 넣는다
     controller "<extern>"
     supervisor TRUE
     middleExtension [
@@ -328,11 +342,12 @@ Boston Dynamics Spot을 [seo2730/webots_ros2_spot](https://github.com/seo2730/we
     ]
   }
   ```
-  - **`middleExtension`이 뭔가?** `Spot.proto`가 노출하는 확장 슬롯(`frontExtension`/`middleExtension`/`rearExtension`) 중 하나로, proto 파일을 수정하지 않고 월드에서 로봇 몸통(등 중앙부)에 장치를 추가 장착하는 통로. 위의 하향 거리센서 4개는 `float_mode`(제자리 호버링)가 바닥까지의 거리를 재는 데 필요한데, 포크 `Spot.proto`엔 이 센서가 없어서 MASKOR 원본 월드와 동일한 방식·배치로 여기에 꽂아줌. 센서가 없으면 드라이버가 자동 감지해서 `float_mode`만 비활성화되고 나머지(걷기/SLAM)는 정상 동작함.
+  - **`middleExtension`이 뭔가?** `Spot.proto`가 노출하는 확장 슬롯(`frontExtension`/`middleExtension`/`rearExtension`) 중 하나로, proto 파일을 수정하지 않고 로봇 몸통(등 중앙부)에 장치를 추가 장착하는 통로. 위의 하향 거리센서 4개는 `float_mode`(제자리 호버링)가 바닥까지의 거리를 재는 데 필요한데, 포크 `Spot.proto`엔 이 센서가 없어서 MASKOR 원본 월드와 동일한 방식·배치로 꽂아줌. 센서가 없으면 드라이버가 자동 감지해서 `float_mode`만 비활성화되고 나머지(걷기/SLAM)는 정상 동작함. 여기에 **더** 얹고 싶으면 `SpotSensorized`의 `extraMiddleSlot` 필드를 쓴다 (거리센서 4개는 그대로 유지됨).
+  - **디바이스 이름은 절대 바꾸지 말 것** — `spot_driver.py`가 `front_left_dist` / `front_right_dist` / `rear_left_dist` / `rear_right_dist`를 이름으로 찾는다.
   - `EXTERNPROTO`는 **로컬 상대경로**여야 함. GitHub raw URL로 참조하면 `Spot.proto` 내부의 `EXTERNPROTO "SpotLeg.proto"`(상대경로)가 "공식 Webots 에셋 아니면 상대경로 추론 안 해줌" 정책에 걸려서 다리가 하나도 안 뜸.
   - 🚨 **커밋 전 이 줄을 항상 확인할 것.** Webots에서 월드를 저장(`Ctrl+S`)할 때마다 이 줄이 `D:/Document/...` 같은 **절대경로로 자동 변경됨**. 그대로 커밋하면 다른 컴퓨터에서 월드가 안 열림. 원인은 Webots가 "월드의 프로젝트 폴더(`simulator/`) 바깥"에 있는 proto만 절대경로로 정규화하기 때문 (`simulator/protos/` 안에 있는 `VelodyneVLP-16.proto` 등은 상대경로가 유지됨). Webots 옵션으로 끌 수 없으니 `git diff`에서 `D:/`가 보이면 위의 상대경로로 되돌리고 커밋.
-  - `supervisor TRUE` 필수 — `spot_driver.py`가 `getFromDef()` 같은 Supervisor 전용 API를 씀. 빠지면 `init()`이 조용히 실패하고 이상한 곳(`touch_fl` 등)에서 크래시남.
-  - 🚨 **Webots 씬트리에서 "Spot"을 Add Node로 다시 검색해서 추가하지 말 것.** Webots 기본 내장(스톡) proto가 잡혀서 위 설정이 통째로 날아감. 텍스트 에디터로 `.wbt` 파일을 직접 고치고 `Ctrl+Shift+R`로 리로드하는 방식으로만 수정.
+  - `supervisor TRUE` 필수 — `spot_driver.py`가 `getFromDef()` 같은 Supervisor 전용 API를 씀. 빠지면 `init()`이 조용히 실패하고 이상한 곳(`touch_fl` 등)에서 크래시남. `SpotSensorized`는 이 값이 기본 TRUE다. `getFromDef()`를 쓰기 때문에 소환기도 Spot만은 `DEF` 이름을 붙여 주입한다(`needs_def`).
+  - 🚨 **Webots 씬트리에서 "Spot"을 Add Node로 다시 검색해서 추가하지 말 것.** Webots 기본 내장(스톡) proto가 잡혀서 위 설정이 통째로 날아감. 어차피 지금은 몸을 손으로 넣지 않으니 이럴 일 자체가 없지만, 옛 월드를 손볼 때는 텍스트 에디터로 `.wbt`를 직접 고치고 `Ctrl+Shift+R`로 리로드하는 방식만 쓴다.
 
 ### 10-2. 실행
 기본 편대([`config/fleet/default.yaml`](src/webots_robot_spawner/config/fleet/default.yaml))에
@@ -379,7 +394,7 @@ ros2 topic pub /spot1/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.3, y: 0.0,
 ### 10-6. 해결된 이슈 (트러블슈팅 기록)
 - ~~**`spot1/odom` TF가 안 올라옴**~~ → **해결.** 원인은 Webots 시뮬레이션이 Play 상태가 아니었던 것. 일시정지 상태면 `step()`이 호출되지 않아 TF/odom이 전혀 발행되지 않음. **시뮬레이션 Play(▶) 상태 확인이 항상 1순위 점검 항목.**
 - ~~**`spot1/map`이 안 나옴 (SLAM 맵 생성 실패)**~~ → **해결.** `multi_scan_merger`와 `depthimage_to_laserscan` 노드에 `use_sim_time: True`가 빠져 있어서, 병합 스캔이 벽시계 시간으로 스탬프됨 → 시뮬레이션 시간 기반 TF와 영원히 매칭 안 됨 → slam_toolbox가 "Message Filter dropping message ... queue is full"을 찍으며 스캔을 전부 버림. launch 파일에 `use_sim_time` 추가로 해결 (`/spot1/map` 발행 실측 확인). **새 센서 처리 노드를 추가할 땐 `use_sim_time: True`를 잊지 말 것.**
-- ~~**`float_mode` 서비스가 항상 비활성화됨**~~ → **해결.** MASKOR 원본은 거리 센서 4개(`front_left_dist` 등)를 proto가 아니라 자기 월드 파일에서 Spot의 `middleExtension` 슬롯에 꽂아주고 있었음. 같은 배치를 `my_world.wbt`의 Spot 인스턴스에 추가해서 해결 (드라이버가 자동 감지).
+- ~~**`float_mode` 서비스가 항상 비활성화됨**~~ → **해결.** MASKOR 원본은 거리 센서 4개(`front_left_dist` 등)를 proto가 아니라 자기 월드 파일에서 Spot의 `middleExtension` 슬롯에 꽂아주고 있었음. 같은 배치를 `my_world.wbt`의 Spot 인스턴스에 추가해서 해결 (드라이버가 자동 감지). 지금은 그 배치가 월드가 아니라 [`SpotSensorized.proto`](src/Webots-SummitXL/workspace/simulator/protos/SpotSensorized.proto) 안에 들어 있다.
 - ~~**맵이 로봇 주변 반경 1.5m 감옥처럼 나옴**~~ → **해결.** `depthimage_to_laserscan`이 아래로 기울어진 뎁스카메라의 "1~2m 앞 바닥"을 장애물로 읽은 것. `pointcloud_to_laserscan` + z 높이 필터로 교체해서 해결 (10-3 참고).
 - ~~**주행할수록 위치가 틀어지고 빈 공간에 유령 장애물이 생김**~~ → **해결.** MASKOR 원본 `spot_driver.py`의 odom 계산에 "로봇이 180도 돌아서 스폰"을 전제한 마이너스 부호가 하드코딩되어 있었음. 우리 월드(정방향 스폰)에서는 odom이 이동 방향과 반대로 나와, SLAM이 매 스캔 잘못된 사전 추정에서 출발 → 맵 오염 + 이동량 비례 드리프트. **판별법**: Spot의 odom은 supervisor 정답 좌표 기반이라 원리상 드리프트 0이어야 하므로, `map→odom` 보정량(tf2_echo)이 수십 cm 이상이면 무조건 좌표 변환 버그.
 - ~~**맵이 실제 세계와 180도 뒤집혀 그려짐**~~ → **해결.** 위 버그를 "접속 시점 자세 기준 상대좌표"로 고쳤더니, 드라이버가 재접속하던 순간 로봇이 이전 주행 자리에서 ~185도 돌아서 있어서 그 방향이 맵의 기준축이 되어버림 (IMU 정답 yaw와 odom yaw를 대조해 184.8° 차이로 확정). 최종적으로 **UGV `robot_driver.py`와 동일하게 월드 절대좌표를 odom으로 그대로 발행**하도록 변경 → 시작 자세·재시작 순서와 무관하게 맵이 항상 월드와 정렬됨.
@@ -565,6 +580,64 @@ spawn_area: [-9.0, -6.0, 9.0, 7.0]              # random 배치 영역
 > `spawn_area`는 **항상** 지켜진다. 맵이 있으면 그 영역 안에서 장애물까지 피하고,
 > 월드가 비어 있는 냉시동(SLAM 맵이 존재할 수 없음)에서는 로봇 간 간격만 보고 고른다.
 
+### 12-2-1. 새 월드를 만들어 편대를 올리기까지
+
+월드를 얻는 방법이 세 가지다. 어느 쪽이든 **`spawn_supervisor` 노드와 래퍼 PROTO의
+`IMPORTABLE` 선언**이 들어가야 소환이 되는데, 세 스크립트가 같은 `prepare()` 로직을
+공유하므로 신경 쓸 필요는 없다.
+
+| 스크립트 | 용도 |
+|---|---|
+| [gen_world_random.py](src/webots_robot_spawner/scripts/gen_world_random.py) | **시드마다 다른** 방·복도 + 장애물 산포 |
+| [gen_world.py](src/webots_robot_spawner/scripts/gen_world.py) | 넓은 작전 지역을 처음부터 생성 (창고형, 결정적) |
+| [gen_world_from_map.py](src/webots_robot_spawner/scripts/gen_world_from_map.py) | SLAM 맵·건물 도면(점유격자) → 월드 |
+| [prepare_world.py](src/webots_robot_spawner/scripts/prepare_world.py) | 밖에서 가져온 `.wbt`를 소환 가능 상태로 |
+
+> 📖 옵션·알고리즘·OS별 명령·트러블슈팅은 **[WORLD_GEN.md](WORLD_GEN.md)** 에 따로 정리했다.
+> 아래는 편대를 올리기까지의 최단 경로만 적는다.
+
+**① 월드 생성** — 편대 매니페스트가 **같이** 나온다. 생성기는 어디가 비었는지 알기
+때문에 좌표까지 써준다 (손으로 고르면 선반 안에 로봇을 놓기 쉽다).
+
+```powershell
+docker run --rm -v "${PWD}:/w" -w /w windows-master python3 `
+  src/webots_robot_spawner/scripts/gen_world_random.py --size 100 --seed 3 --name arena_s3
+```
+→ `worlds/arena_s3.wbt` + `config/fleet/arena_s3.yaml` + `config/doorways/arena_s3.yaml`
+
+무작위 생성은 방마다 로봇이 지나갈 출입구를 보장하고, 그 틈의 중앙 좌표를
+`config/doorways/`에 따로 남긴다 (문짝은 달지 않는다).
+[WORLD_GEN.md 3-3](WORLD_GEN.md#3-3-출입구-yaml) 참고.
+
+**② compose를 그 편대에 맞추기** — 로봇 서비스와 `fleet:=` 값이 한꺼번에 맞춰진다.
+
+```powershell
+docker run --rm -v "${PWD}:/w" -w /w windows-master python3 `
+  src/webots_robot_spawner/scripts/gen_fleet_compose.py --fleet arena_s3.yaml
+```
+
+> 🚨 ②를 건너뛰면 **조용히 어긋난다.** 소환기는 새 편대를, 로봇 컨테이너는 옛 이름을
+> 쓰게 된다. 그래서 생성기가 두 곳을 한 번에 고친다.
+
+**③ Webots에서 월드 열기** — `File > Open World...` → `worlds/arena_s3.wbt`
+
+**④ 컨테이너 기동**
+```bash
+docker compose -f docker-configs/windows/docker-compose.yml up -d
+```
+
+편대가 뜨기까지 30초쯤 걸린다. `fleet_start_delay`가 20초라 느린 게 아니라
+[기동 순서](#12-3-1-기동-순서-왜-드론만-다른가)를 지키는 중이다.
+
+**재빌드가 필요한 때 / 아닌 때**
+
+| 바꾼 것 | 필요한 조치 |
+|---|---|
+| 월드 `.wbt` | 없음 — Webots가 호스트에서 직접 읽는다 |
+| 편대 매니페스트 | 컨테이너 재시작 (마운트되어 있다) |
+| compose 서비스 구성 | `up -d` |
+| 파이썬 소스 (드라이버·소환기) | `build` 후 `up -d` |
+
 ### 12-3. 구조 (몸 / 뇌 / 컨테이너)
 
 세 층으로 나뉜다. **몸과 뇌는 1:1이어야 하지만, 뇌와 컨테이너는 그럴 이유가 없다** —
@@ -598,16 +671,24 @@ ugv3 (런타임 소환된 몸) ←TCP→ 이 뇌만 fleet 컨테이너가 띄운
 compose는 매니페스트에서 생성한다. 손으로 유지하면 매니페스트와 이중 관리가 된다:
 
 ```bash
-# Git Bash / Linux / macOS
+# Ubuntu / macOS / Git Bash / WSL
 docker run --rm -v "$PWD:/w" -w /w windows-master \
   python3 src/webots_robot_spawner/scripts/gen_fleet_compose.py --fleet default.yaml
 ```
+```bat
+REM Windows cmd.exe — $PWD 도 ${PWD} 도 통하지 않는다
+docker run --rm -v "%cd%:/w" -w /w windows-master ^
+  python3 src/webots_robot_spawner/scripts/gen_fleet_compose.py --fleet default.yaml
+```
 ```powershell
-# PowerShell — ${PWD} 로 감싸야 함. "$PWD:/w" 는 PowerShell 이 $PWD: 를
+# Windows PowerShell — ${PWD} 로 감싸야 함. "$PWD:/w" 는 PowerShell 이 $PWD: 를
 # 드라이브 한정 변수로 읽어서 확장에 실패한다.
 docker run --rm -v "${PWD}:/w" -w /w windows-master `
   python3 src/webots_robot_spawner/scripts/gen_fleet_compose.py --fleet default.yaml
 ```
+
+> 셸별 문법과 이미지 이름(우분투는 `ubuntu-master`, 맥은 `mac-master`)은
+> [WORLD_GEN.md 2장](WORLD_GEN.md#2-os별-실행-방법-중요)에 표로 정리해 뒀다.
 
 `# >>> FLEET GENERATED` 마커 사이만 갈아 끼우므로 `master`/`fleet` 서비스와 주석은
 그대로 남는다. `--check`를 붙이면 고치지 않고 최신인지만 확인한다(CI용).
@@ -616,56 +697,6 @@ docker run --rm -v "${PWD}:/w" -w /w windows-master `
   등록해서 마스터 입장에선 구분되지 않는다 ([MAP_MERGE.md](MAP_MERGE.md) 참고)
 - Docker 소켓을 쓰는 방식은 **일부러 만들지 않았다.** 소켓 경로가 플랫폼마다 달라
   (Linux 유닉스 소켓 / Windows 네임드 파이프 / Mac Desktop VM) 크로스 플랫폼 전제가 깨진다.
-
-### 12-2-1. 새 월드를 만들어 편대를 올리기까지
-
-월드를 얻는 방법이 세 가지다. 어느 쪽이든 **`spawn_supervisor` 노드와 래퍼 PROTO의
-`IMPORTABLE` 선언**이 들어가야 소환이 되는데, 세 스크립트가 같은 `prepare()` 로직을
-공유하므로 신경 쓸 필요는 없다.
-
-| 스크립트 | 용도 |
-|---|---|
-| [gen_world.py](src/webots_robot_spawner/scripts/gen_world.py) | 넓은 작전 지역을 처음부터 생성 (창고형) |
-| [gen_world_from_map.py](src/webots_robot_spawner/scripts/gen_world_from_map.py) | SLAM 맵·건물 도면(점유격자) → 월드 |
-| [prepare_world.py](src/webots_robot_spawner/scripts/prepare_world.py) | 밖에서 가져온 `.wbt`를 소환 가능 상태로 |
-
-**① 월드 생성** — 편대 매니페스트가 **같이** 나온다. 생성기는 어디가 비었는지 알기
-때문에 좌표까지 써준다 (손으로 고르면 선반 안에 로봇을 놓기 쉽다).
-
-```powershell
-docker run --rm -v "${PWD}:/w" -w /w windows-master python3 `
-  src/webots_robot_spawner/scripts/gen_world.py --size 150 --name arena150
-```
-→ `worlds/arena150.wbt` + `config/fleet/arena150.yaml`
-
-**② compose를 그 편대에 맞추기** — 로봇 서비스와 `fleet:=` 값이 한꺼번에 맞춰진다.
-
-```powershell
-docker run --rm -v "${PWD}:/w" -w /w windows-master python3 `
-  src/webots_robot_spawner/scripts/gen_fleet_compose.py --fleet arena150.yaml
-```
-
-> 🚨 ②를 건너뛰면 **조용히 어긋난다.** 소환기는 새 편대를, 로봇 컨테이너는 옛 이름을
-> 쓰게 된다. 그래서 생성기가 두 곳을 한 번에 고친다.
-
-**③ Webots에서 월드 열기** — `File > Open World...` → `worlds/arena150.wbt`
-
-**④ 컨테이너 기동**
-```bash
-docker compose -f docker-configs/windows/docker-compose.yml up -d
-```
-
-편대가 뜨기까지 30초쯤 걸린다. `fleet_start_delay`가 20초라 느린 게 아니라
-[기동 순서](#12-3-1-기동-순서-왜-드론만-다른가)를 지키는 중이다.
-
-**재빌드가 필요한 때 / 아닌 때**
-
-| 바꾼 것 | 필요한 조치 |
-|---|---|
-| 월드 `.wbt` | 없음 — Webots가 호스트에서 직접 읽는다 |
-| 편대 매니페스트 | 컨테이너 재시작 (마운트되어 있다) |
-| compose 서비스 구성 | `up -d` |
-| 파이썬 소스 (드라이버·소환기) | `build` 후 `up -d` |
 
 ### 12-3-1. 기동 순서 (왜 드론만 다른가)
 
@@ -744,11 +775,26 @@ ERROR: In order to import the PROTO 'X', first it must be declared in the IMPORT
 - Gemini api 연동
 - Drone 추가 → 기체 구성·비행 검증 완료, ROS 2 연동 남음 ([11](#11-drone-중형급-쿼드콥터) 참고)
 - ~~로봇 생성 자동화~~ → 완료 (서비스 호출로 UGV/Spot/드론 런타임 소환, 편대는 yaml. [12](#12-로봇-소환-runtime-spawn) 참고)
-- 여러 월드 지원 / 점유격자에서 월드 자동 생성 (검토 완료, 착수 전)
+- ~~여러 월드 지원 / 점유격자에서 월드 자동 생성~~ → 완료 (창고형·무작위 방/복도·점유격자
+  변환·외부 월드 반입 4종. 무작위 생성은 방마다 출입구를 보장하고 좌표를 yaml로 남긴다.
+  [WORLD_GEN.md](WORLD_GEN.md) 참고)
+- 자율 탐사 (`explore_lite` 연동) — 미착수
+- 실제 SLAM 지도 → 월드 왕복 시험 (`gen_world_from_map.py`는 합성 지도로만 검증) — 미착수
 - ~~다중 로봇 지도 병합~~ → 완료 (마스터 관제 컨테이너에서 `/map_merged` 발행, 로봇 자동 합류/이탈까지 확인. [맵 병합 구축 기록](MAP_MERGE.md) 참고)
 - ~~윈도우 환경도 bridge 네트워크로 전환 테스트~~ → 완료 ([8-2](#8-2-windows-네트워킹-참고사항-웹-개발자용) 참고)
 - ~~Spot 추가~~ → 완료 (다리 제어 + 뎁스카메라 SLAM 맵 생성까지 확인, [10-6](#10-6-해결된-이슈-트러블슈팅-기록) 참고)
 
 ## 참고 문서 (References)
+
+이 저장소의 문서:
+
+| 문서 | 다루는 것 |
+|---|---|
+| [WORLD_GEN.md](WORLD_GEN.md) | 월드(환경) 만들기 — 무작위 방/복도, 창고형, 점유격자 변환, 외부 반입. **OS별 명령어 정리 포함** |
+| [MAP_MERGE.md](MAP_MERGE.md) | 여러 로봇의 SLAM 지도를 `/map_merged`로 합치는 부분 |
+| [drone_setup.md](drone_setup.md) | 드론 기체 구성과 비행 제어 |
+| [spot_driver_functions.md](spot_driver_functions.md) | Spot 드라이버 함수 목록 |
+
+바깥 자료:
 - Webots 공식 사용자 가이드 (User Guide)
 - Webots 공식 레퍼런스 매뉴얼 (Reference Manual)

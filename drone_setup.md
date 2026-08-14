@@ -195,8 +195,13 @@ UGV와 달리 **z와 roll/pitch까지 싣는다** (드론은 3D로 움직이므�
 
 ### 헤드리스 하네스
 
-`my_world.wbt`는 헤드리스로 못 돌린다 — UGV·Spot이 `<extern>`이라 Webots가
-컨트롤러 연결을 기다리며 멈춘다. 그래서 스크래치패드에 **격리 프로젝트**를 만들었다.
+당시 `my_world.wbt`는 헤드리스로 못 돌렸다 — UGV·Spot이 월드에 `<extern>`으로 박혀
+있어 Webots가 컨트롤러 연결을 기다리며 멈췄다. 그래서 스크래치패드에 **격리 프로젝트**를
+만들었다.
+
+> 지금은 월드에 로봇이 없고(소환기가 넣는다) 소환도 `synchronization FALSE`로 하므로
+> 월드 자체는 헤드리스로 뜬다. 그래도 이 격리 하네스는 기체 단독 거동을 재는 데
+> 여전히 제일 빠르다 — 노드가 적어 물리 스텝이 훨씬 빨리 돈다.
 
 ```
 dronetest/
@@ -330,7 +335,7 @@ Spot.proto 절대경로 변형과 같은 부류의 현상. 저장 후
 | `.../protos/Mavic2Pro/` | 메시 14개 + 텍스처 (로컬 포함) |
 | `.../simulator/simulator/drone_driver.py` | webots_ros2 플러그인 (2단 제어 + odom/TF) |
 | `.../simulator/simulator/drone_teleop.py` | 키보드 조종 (고도 축 있음) |
-| `.../simulator/worlds/my_world.wbt` | `DEF DRONE1` 인스턴스 |
+| `src/webots_robot_spawner/config/fleet/*.yaml` | 드론의 스폰 좌표 (월드에 인스턴스를 박아 두지 않는다) |
 | `src/webots_python/urdf/Mavic2ProMedium.urdf.xacro` | 플러그인 연결 + 디바이스 매핑 |
 | `src/webots_python/launch/single_drone.launch.py` | 런치 (`ROBOT_ID` 방식) |
 | `docker-configs/*/docker-compose.yml` | `drone1` 서비스 |

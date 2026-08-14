@@ -1,0 +1,12 @@
+# arena_s3 월드용 편대 — gen_world_random.py 가 함께 생성했다 (seed 3).
+#
+# 좌표는 격자에서 벽·장애물과 떨어진 셀 중 사분면별로 하나씩 골랐다.
+# 지형이 시드마다 다르므로 손으로 고르면 벽 속에 로봇을 놓기 쉽다.
+
+fleet:
+  - {type: ugv, id: ugv1, x: -40.75, y: -23.75, yaw: 0.0}
+  - {type: ugv, id: ugv2, x: 45.75, y: -22.25, yaw: 0.0}
+  - {type: spot, id: spot1, x: 34.25, y: 22.25, yaw: 0.0}
+  - {type: drone, id: drone1, x: -7.25, y: 22.75, yaw: 0.0}
+
+spawn_area: [-48.0, -48.0, 48.0, 48.0]
