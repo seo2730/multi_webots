@@ -31,7 +31,11 @@
 |---|---|---|
 | `NUMBER_OF_JOINTS` | 12 | 다리 4개 × 관절 3개(어깨 벌림/어깨 회전/팔꿈치) |
 | `HEIGHT` | 0.52 | 서 있을 때 몸통(base_link)의 지면 기준 높이(m) |
-| `MAX_STEP_LENGTH` | 0.05 | cmd_vel로 만들 수 있는 보폭 상한 (넘으면 넘어짐, 실측 튜닝) |
+| `MAX_STEP_LENGTH` | **0.080** | cmd_vel로 만들 수 있는 보폭 상한 (넘으면 넘어짐, 실측 튜닝). 케이던스 운용점에서 **약 0.58 m/s** |
+| `MIN_STEP_LENGTH` | 0.015 | 보폭 하한. 이보다 작으면 발이 안 떨어진다. 같은 운용점에서 **약 0.149 m/s 미만을 못 내는 이유** |
+| `SPEED_COEF` / `SPEED_EXP` | **4.474** / 0.81 | m/s -> 보폭 환산 ([cmd_vel 단위](#cmd_vel-단위)). 지수는 형상, 계수는 운용점에서 재교정 |
+| `swing_period` / `step_velocity` | 0.12 / 3.0 | **런타임 파라미터.** 케이던스 — 바꾸면 위 속도값이 전부 따라 바뀐다 |
+| `YAW_PER_RADPS` | 1.9 | rad/s -> YawRate 환산 |
 | `MAX_YAW_RATE` | 0.5 | 회전 속도 상한 |
 | `motions` | dict | "stand"/"sit"/"lie" 각각의 목표 관절 각도 12개 (자세 서비스가 사용) |
 
@@ -80,7 +84,88 @@ webots_ros2_driver가 로봇 접속 시 한 번 호출. 하는 일 순서대로:
 
 #### `__cmd_vel(msg)` — cmd_vel 구독 콜백
 `geometry_msgs/Twist`를 Bezier 보행 파라미터로 번역.
-- **핵심**: `linear.x`는 속도(m/s)가 아니라 `StepLength = 0.15 × linear.x`로 **보폭**이 됨
+- **핵심**: `linear.x`는 **m/s**다. 내부에서 `step_from_speed()`가 비선형 환산해 보폭이 된다
+
+<a id="cmd_vel-단위"></a>
+##### cmd_vel 단위 — 2026-08-16 변경
+
+예전에는 `linear.x`가 **보폭 배율**(`StepLength = 0.15 × linear.x`)이었고 `angular.z`는
+YawRate로 그대로 들어갔다. 그런데 Nav2의 DWB는 `cmd_vel`을 m/s·rad/s로 알고 궤적을
+예측한다 — **컨트롤러의 세계 모형이 로봇과 어긋난 채로 돌았다.**
+
+실측(Webots, 20초 구간, 시뮬 23% 속도 보정):
+
+| `linear.x` | 0.100 | 0.200 | 0.333 | 0.500 | 1.000 |
+|---|---|---|---|---|---|
+| 실제 m/s | 0.096 | 0.169 | **0.256** | 0.249 | 0.249 |
+
+| `angular.z` | 0.200 | 0.300 | 0.500 | 0.800 |
+|---|---|---|---|---|
+| 실제 rad/s | 0.106 | 0.164 | **0.264** | 0.265 |
+
+회전은 **실제가 예측의 0.53배**로 고정이었다. 상한을 어떻게 잡아도 이 비율은 안 바뀌므로
+파라미터로는 못 고친다. 그래서 포화 지점에서 역산해 환산 계수를 넣었다.
+
+| 상수 | 값 | 유도 |
+|---|---|---|
+| `YAW_PER_RADPS` | 1.9 | YawRate 상한 0.5 ÷ 0.263 rad/s (회전은 선형이었다) |
+| `SPEED_COEF` / `SPEED_EXP` | 2.92 / 0.81 → **4.474 / 0.81** | 전진은 **비선형** — 아래 참고. 계수는 케이던스를 올린 뒤 재교정했다 |
+
+**전진은 계수 하나로 안 된다.** 보폭이 작을수록 효율이 높다.
+
+| StepLength | 0.015 | 0.030 | 0.050 |
+|---|---|---|---|
+| 실제 m/s | 0.096 | 0.169 | 0.256 |
+| m/s ÷ L | 6.4 | 5.6 | 5.1 |
+
+처음엔 포화점에 맞춘 선형 계수(`STEP_PER_MPS = 0.195`)를 썼는데 **저속에서 33% 초과속**이
+났다. 로그-로그 회귀로 `v = 2.92·L^0.81` 을 얻어 역산한다.
+
+```python
+StepLength = (|v| / 2.92) ** (1/0.81)      # step_from_speed()
+```
+
+재측정 — 명령과 실제가 맞는다:
+
+| 명령 m/s | 0.10 | 0.15 | 0.25 |
+|---|---|---|---|
+| 선형 환산 | +33% | +17% | +11% |
+| **비선형 환산** | **−2%** | **−13%** | **+4%** |
+
+| 명령 rad/s | 0.10 | 0.18 | 0.26 |
+|---|---|---|---|
+| 오차 | +5% | +3% | +7% |
+
+##### 케이던스를 올린 뒤 계수를 다시 잡았다
+
+위 표는 **기본 케이던스**에서 잰 것이다. 그 뒤 `swing_period`/`step_velocity`를 노출해
+케이던스를 올리자([SPOT_NAV.md 3장 ⑦](SPOT_NAV.md#-속도를-올리려면-보폭이-아니라-케이던스다))
+같은 보폭이 더 빠른 속도를 내게 됐다. 그래서 운용점(`swing=0.12`, `stepV=3.0`)에서 한 점
+교정했다.
+
+```
+L = 0.080 에서 0.578 m/s  =>  0.578 = coef · 0.080^0.81  =>  coef = 4.474
+```
+
+지수 0.81은 곡선의 **형상**이라 그대로 뒀다. 1점 교정이므로 **저속 쪽은 외삽**이다.
+바뀐 한계:
+
+| | 기본 케이던스 | 현재 운용점 |
+|---|---|---|
+| 최대 (L = `MAX_STEP_LENGTH`) | 0.256 m/s (L 0.05) | **약 0.58 m/s** (L 0.080) |
+| 최소 (L = `MIN_STEP_LENGTH`) | 0.077 m/s | **약 0.149 m/s** |
+
+⚠️ **이 절대값들은 재측정 대기 중이다.** 원 측정이 시뮬 속도를 23% 고정으로 가정했는데
+실제로는 부하에 따라 23~90%로 변한다 — 최대 4배까지 틀릴 수 있다
+([SPOT_NAV.md 4장](SPOT_NAV.md#-속도를-벽시계로-쟀다)). 단위가 m/s라는 것과 항목 간
+상대 관계는 유효하다.
+
+⚠️ 보폭 하한 때문에 **최소 속도 아래는 아예 못 낸다.** 물리적 제약이라 없앨 수 없다
+(없애면 발이 안 떨어진다). 대신 Nav2 쪽에 최저 속도를 알려 **못 내는 속도를 계획하지
+않게** 했다 — nav2_spot.yaml 참고.
+
+⚠️ 이 계수를 바꾸면 [nav2_spot.yaml](src/Webots-SummitXL/workspace/navigation/param/nav2_spot.yaml)의
+`max_vel_x`/`max_vel_theta`도 같이 바꿔야 한다. 한 쌍이다.
 - `linear.y` → `LateralFraction` (게걸음 방향), `angular.z` → `YawRate`(제자리 회전)
 - 너무 작은 보폭은 최소값으로 올리고(발이 안 떨어지는 것 방지), `MAX_STEP_LENGTH`/`MAX_YAW_RATE`로 **상한 클램프** (넘어짐 방지, 우리가 추가)
 - `inverse_gait_input`에 발행자가 있으면 무시됨 (수동 보행 튜닝이 우선권을 가짐)
@@ -169,3 +254,97 @@ float_mode 중에는 스킵.
 |---|---|
 | `SpotKinematics.SpotModel` | 몸통 자세+발끝 위치 → 관절 각도 (역기구학). 내부적으로 `LegKinematics`/`LieAlgebra` 사용 |
 | `Bezier.BezierGait` | 보행 파라미터 → 발끝 궤적 (스윙은 베지어 곡선, 스탠스는 사인 곡선) |
+
+---
+
+## 관련 문서
+
+- [Readme 10장](Readme.md#10-spot-사족보행-로봇) — 사용법, 센서 구성, 해결된 이슈
+- [INTERFACES.md](INTERFACES.md) — 자세 제어 서비스 목록과 `cmd_vel` 의미 차이
+- [SPAWNER.md](SPAWNER.md) — Spot만 `DEF` 이름이 필요한 이유 (`getFromDef`)
+- [MAP_MERGE.md](MAP_MERGE.md) — Spot 팔 관절을 0으로 채우는 이유
+- [ugv_setup.md](ugv_setup.md) / [drone_setup.md](drone_setup.md) — 다른 두 로봇
+
+---
+
+> 📘 튜닝 과정에서 겪은 이슈와 해결은 [SPOT_NAV.md](SPOT_NAV.md)에 따로 정리했다.
+
+## 자율주행 직접 테스트하기
+
+Spot의 Nav2 파라미터는 [nav2_spot.yaml](src/Webots-SummitXL/workspace/navigation/param/nav2_spot.yaml)에
+따로 있다(UGV·드론과 다르다). 값을 바꾼 뒤 이렇게 확인한다.
+
+### 🚨 먼저 알아야 할 함정
+
+**테스트 노드에 `use_sim_time`을 반드시 켠다.** 안 켜면 목표 스탬프가 벽시계 시각이라
+Nav2가 수백 초 과거로 TF를 조회하고 **로봇이 한 발도 안 뗀다.**
+
+```
+Extrapolation Error: Requested time 2982.516 but the earliest data is at time 3364.256
+```
+
+이 메시지가 보이면 파라미터 문제가 아니라 이것이다. 실제로 이것 때문에 세 번을 헛돌았다.
+
+```python
+n = Node('test', parameter_overrides=[Parameter('use_sim_time', value=True)])
+```
+
+### 속도 환산이 맞는지 (명령 = 실제인가)
+
+```bash
+docker exec spot1_brain_windows bash -c "source /ros2_ws/install/setup.bash && python3 - <<'EOF'
+import math, time, rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
+rclpy.init(); n=Node('v'); S={}
+n.create_subscription(Odometry,'/spot1/odom',lambda m:S.__setitem__('o',m),10)
+pub=n.create_publisher(Twist,'/spot1/cmd_vel',10)
+t0=time.time()
+while time.time()-t0<20 and 'o' not in S: rclpy.spin_once(n,timeout_sec=0.1)
+pos=lambda: (S['o'].pose.pose.position.x, S['o'].pose.pose.position.y)
+for v in [0.10, 0.15, 0.25]:
+    pub.publish(Twist()); t=time.time()
+    while time.time()-t<4: rclpy.spin_once(n,timeout_sec=0.05)
+    p0=pos(); t=time.time(); tw=Twist(); tw.linear.x=v
+    while time.time()-t<20:
+        pub.publish(tw); rclpy.spin_once(n,timeout_sec=0.02); time.sleep(0.02)
+    pub.publish(Twist()); p1=pos()
+    sim=(time.time()-t)*0.23          # 시뮬이 실시간의 ~23% 로 돈다
+    act=math.hypot(p1[0]-p0[0],p1[1]-p0[1])/sim
+    print(f'{v:.2f} -> {act:.3f} m/s ({(act-v)/v*100:+.0f}%)')
+EOF"
+```
+
+오차 ±15% 안이면 정상이다. 크게 벗어나면 `spot_driver.py`의 `SPEED_COEF`/`SPEED_EXP`를
+다시 잡아야 한다 ([cmd_vel 단위](#cmd_vel-단위)).
+
+### 목표점 주행
+
+목표는 **맵에서 빈 곳을 골라** 준다. 임의 좌표를 쓰면 월드 밖이나 벽 속을 찍어 결과가
+무의미해진다(실제로 그렇게 세 번 날렸다).
+
+```bash
+docker exec spot1_brain_windows bash -c "source /ros2_ws/install/setup.bash && \
+ros2 topic pub -1 /spot1/goal_pose geometry_msgs/msg/PoseStamped \
+'{header: {frame_id: \"spot1/map\"}, pose: {position: {x: -6.0, y: -4.0}, orientation: {w: 1.0}}}'"
+```
+
+> ⚠️ `ros2 topic pub`은 스탬프가 0이라 Nav2가 "최신"으로 처리해 통과한다. 하지만
+> 액션(`navigate_to_pose`)으로 스크립트를 짤 때는 위의 `use_sim_time`이 필수다.
+
+### 무엇을 보면 되는가
+
+| 지표 | 정상 | 비정상일 때 볼 곳 |
+|---|---|---|
+| 목표 오차 | < 0.5 m (`xy_goal_tolerance`) | 회전 환산(`YAW_PER_RADPS`) |
+| **배회 배수** (주행 ÷ 직선거리) | 1~2배 | 컨트롤러 설정 (RPP `lookahead_dist`) |
+| 주행 0.00 m | — | `use_sim_time`, 시뮬 정지, Spot이 앉아 있는지 |
+| `GridBased: failed to create plan` | — | `footprint` 폭, `inflation_radius` |
+
+### 시뮬이 멈추는 함정
+
+**드론(`drone1`) 컨테이너를 내리면 시뮬레이션 전체가 멈춘다.** 드론은
+`synchronization TRUE`라 Webots가 매 스텝 드론 컨트롤러를 기다린다. Spot만 테스트한다고
+다른 로봇을 내릴 때 드론은 반드시 살려 둔다 (`ugv1`도 `/clock` 발행자라 유지).
+증상은 `/spot1/odom`이 0건으로 뚝 끊기는 것이다.

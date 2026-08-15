@@ -13,19 +13,30 @@ DJI Mavic 2 Pro를 중형급(6.35kg)으로 개조해 월드에 넣고, UGV·Spot
 ```
 [Webots]                                   [Docker / ROS 2]
 
-Mavic2ProMedium {   (매니페스트로 소환)      drone1_brain_windows
+Mavic2ProMediumSensorized {  (매니페스트로 소환)  drone1_brain_windows
   controller "<extern>"  ←─── TCP 1234 ───→  webots_ros2_driver
 }                                                  │
   │                                                └─ drone_driver.py (플러그인)
   ├─ Propeller ×4 (RotationalMotor)                     │
   ├─ GPS / InertialUnit / Gyro / Compass               │  init() 1회
   ├─ 짐벌 3축 (HingeJoint + PositionSensor)            │  step() 매 32ms
-  └─ cameraSlot: Camera 400×240                        │
+  ├─ cameraSlot: Camera 400×240                        │
+  ├─ bodySlot: Velodyne VLP-16   ← 래퍼가 얹은 것      │
+  └─ bodySlot: RangeFinder(하향) ← 래퍼가 얹은 것      │
                                                        ↓
                                             /drone1/cmd_vel  (구독)
                                             /drone1/odom     (발행)
                                             /tf              (발행)
                                             /drone1/camera/* (드라이버 자동)
+                                            /drone1/Velodyne_VLP_16/point_cloud
+                                            /drone1/down_depth/point_cloud
+                                                       │
+                                            drone_layer_mapper  (7장)
+                                            ├─▶ /drone1/map         층 합집합 ─▶ 맵 병합기
+                                            ├─▶ /drone1/map_active  현재 층   ─▶ Nav2
+                                            └─▶ /drone1/map_layer_k          ─▶ altitude_selector
+                                                                                    │
+                            /drone1/goal_pose_3d ─▶ 층 선택 ─▶ 고도 이동 ─▶ Nav2 ─▶ cmd_vel
 ```
 
 Spot과 마찬가지로 일반 ROS 2 노드가 아니라 **Webots가 매 스텝 `step()`을 직접 호출**하는
@@ -63,8 +74,86 @@ PROTO에 이미 들어 있는 것 (추가 작업 불필요):
 | 짐벌 모터 | `camera roll/pitch/yaw` | + 각각 `... sensor` |
 | 프로펠러 | `front left propeller` 등 4개 | |
 
-**거리 측정 센서는 없다.** 추가하려면 `bodySlot`(동체 고정) 또는
-`cameraSlot`(짐벌 장착 — 안정화를 공짜로 받음)을 쓴다.
+### 라이다 (나중에 추가)
+
+기체 PROTO에는 **거리 측정 센서가 없었다.** 그래서 드론만 SLAM을 못 돌렸다
+(`robot_types.DRONE.has_map`이 `False`였던 이유).
+
+UGV·Spot과 같은 방식 — 센서를 품은 래퍼 PROTO — 로 VLP-16을 얹었다.
+
+| | |
+|---|---|
+| 래퍼 | `protos/Mavic2ProMediumSensorized.proto` |
+| 장착 위치 | `bodySlot`, 동체 위 **0.12 m** |
+| 디바이스 이름 | `Velodyne_VLP_16` (URDF가 참조 — 바꾸면 안 됨) |
+| 질량 | **없음** (`lidarPhysics FALSE`) |
+
+**왜 뎁스카메라가 아니라 라이다인가**
+
+- UGV와 파이프라인이 100% 같아진다: `Velodyne → pointcloud_to_laserscan → slam_toolbox`.
+  뎁스는 Spot처럼 시야를 채우려면 5개 + `multi_scan_merger`가 필요해 로봇당 노드가 6개 는다.
+- 라이다 1개로 360°. 뎁스는 하나당 FOV가 90° 남짓이라 제자리 요잉이 잦은 드론에 불리하다.
+
+> 이후 7장(고도 회피)에서 이 파이프라인은 `drone_layer_mapper` 한 노드로 대체됐다.
+> 라이다를 고른 판단은 그대로 유효하다 — 360°와 노드 수 이점이 더 커졌다.
+
+**하향 뎁스센서 (나중에 추가)**
+
+라이다의 가장 아래 광선은 −15°라 고도 `h`에서 바닥에 닿는 곳이 수평 `3.73h` 지점이다.
+2 m로 날면 **반경 7.5 m짜리 장님 원반**이 드론 바로 아래에 생긴다(`minRange` 1 m까지
+겹쳐 더 나쁘다). 층을 바꿔 넘어가려면 "지금 아래로 내려가도 되나"를 알아야 하는데,
+그 근거가 정확히 이 원반 안에 있다. 그래서 `bodySlot`에 하향 `RangeFinder`를 달았다.
+
+| | |
+|---|---|
+| 디바이스 이름 | `down_depth` |
+| 장착 | base_link 아래 0.12 m, `rotation 0 1 0 1.5708` (+x → −z) |
+| 해상도 / 시야 | 64×48 / 120° — 군집 대비해 일부러 작게 |
+
+검증(고도 2 m, 발밑에 높이 1 m 상자): 깊이 범위 0.880~1.880 m,
+상자 위 1134화소 / 바닥 1938화소 / **애매한 값 0개**. 센서 지상고 1.88 m와 정확히 맞는다.
+
+> ⚠️ 반환값은 **광축 방향 평면 깊이**지 방사거리가 아니다. 아래가 평평하면 전 화소가
+> 같은 값으로 읽히므로, 이걸 모르면 "고장"으로 오해한다.
+
+**왜 질량을 주지 않았나**
+
+VLP-16 실물은 0.83 kg이고 본체 `Physics.mass`는 2.8 kg이다. 켜면 +30%인데,
+추력은 `ω²`에 비례하므로 호버 각속도는 `√m`으로 움직인다 — 아래 3장에서 맞춰 놓은
+`K_VERTICAL_THRUST`(68.5)부터 다시 잡아야 하고, `centerOfMass`도 올라가 자세 게인까지
+흔들린다. 매핑용 센서를 다는 것이 목적이라 기본은 무게 없는 센서로 뒀다.
+탑재 중량 영향까지 보려면 `lidarPhysics TRUE`로 켜고 아래 4장의 헤드리스 하네스로
+호버 추력을 다시 재면 된다.
+
+**장착 높이 0.12 m의 근거 (헤드리스 검증)**
+
+낮게 달면 아래쪽 광선이 기체를 스친다. 이 라이다는 `minRange`가 1 m라 기체가
+"가짜 장애물"로 찍히지는 않지만 — Webots는 `minRange`보다 가까운 반사를 정확히 1.0으로
+잘라 내보내므로 — **가려진 방향은 1 m 앞에 벽이 있는 것처럼 보이고 그 너머가 영영 안 보인다.**
+
+수직 시야는 30°(±15°)다. 실측으로 확인했다(`wb_lidar_get_vertical_fov` = 0.5236).
+가장 아래 광선은 반경 `r`에서 `0.268r`만큼 내려가므로:
+
+| 기체 부위 | 반경 | 표면 z | 그 반경에서 광선 z | 여유 |
+|---|---|---|---|---|
+| 동체 뒤쪽 끝 | 0.27 | +0.031 | 0.048 | 17 mm |
+| 랜딩기어 윗면 | 0.323 | −0.018 | 0.034 | 51 mm |
+| 프로펠러 회전면 | 0.46 | −0.064 | −0.003 | 61 mm |
+
+20×20 아레나 한가운데 2 m 고도에 수평으로 고정하고 전체 광선(3600×16 = 57600개)을 읽은 결과:
+
+```
+lidar: 3600 x 16 layers, fov=6.2832 vfov=0.5236 min=1.00 max=100.00
+finite=34464  min=8.150  max=14.239  clamped_at_minrange=0
+  layer  6..13  front range = 10.002 ~ 10.184   (10 m 벽)
+  layer 14      front range = 9.457
+  layer 15      front range = 8.159             (최하단 광선이 바닥에 닿음)
+RESULT: PASS (self-occlusion 없음)
+```
+
+`min=8.150`은 최하단 광선이 바닥에 닿는 이론값 `2.12/sin15° = 8.19`와 일치하고,
+`minRange`로 잘린 값이 **0개**다 — 자기 몸을 전혀 보지 않는다.
+`layer 0~5`(위쪽)가 `inf`인 것도 맞다. 벽 높이가 3 m라 위로 올라간 광선이 벽을 넘어간다.
 
 ### Physics.damping (공기 저항)
 
@@ -310,8 +399,31 @@ Spot.proto 절대경로 변형과 같은 부류의 현상. 저장 후
 
 ### 그 외
 
-- **거리 센서 없음** — 자율 비행·장애물 회피에 필요. 뎁스카메라(`cameraSlot`, 짐벌 안정화를
-  공짜로 받음) + 하향 거리센서 조합이 유력. **이게 붙어야 SLAM/Nav2를 연결할 수 있다.**
+- **1 m 이내가 사각** — 라이다의 `minRange`가 1 m다. 좁은 복도나 벽 가까이에서는 벽이
+  사라지므로 자율 비행의 안전 여유를 그 이상으로 잡아야 한다. 장애물 회피를 제대로
+  하려면 근접/하향 센서를 더 달아야 하고, 래퍼 PROTO의 `extraBodySlot` 필드가 그 자리다.
+- **맵이 비행 고도의 수평 단면** — 라이다 수직 시야가 ±15°라 한 번에 보이는 것은 그 고도
+  주변뿐이다. 지금은 `drone_layer_mapper`가 **층(1/2/3 m)마다 격자를 따로 누적**해서
+  이 성질을 다루지만(7장), 층 **사이** 높이의 장애물은 여전히 어느 층에도 제대로 안 찍힌다.
+  다른 로봇이 보는 맵(`/{ns}/map`)은 그 층들의 합집합이라 지상 로봇 기준 높이가 아니다.
+- **연속적인 3D 경로계획은 여전히 없다.** 지금은 **2.5D 레이어드**(경로 1)다 — 고도를
+  1/2/3 m 이산 층으로 두고 층을 고른다. 상승과 수평이동이 섞이지 않고 순차로 일어나며,
+  층 사이 높이의 장애물은 표현되지 않는다. 구조와 실측은 7장에 있다.
+  아래는 왜 연속 3D(경로 2)로 가지 않았는지의 배경이다.
+
+  원인은 표현 자체에 있다. Nav2 플래너는 `nav_msgs/OccupancyGrid`, 즉 z 축이 없는 2D
+  격자 위에서 돈다. 그 격자를 만드는 `/{ns}/map` 도 비행 고도의 수평 단면이다.
+  그래서 "장애물 위로 넘어간다 / 아래로 지나간다" 는 경로는 원리적으로 나올 수 없다.
+
+  3D 로 가려면 세 층이 다 필요하다.
+
+  | 층 | 지금 | 3D 로 가려면 |
+  |---|---|---|
+  | 지도 | 2D OccupancyGrid 층 3장 (`drone_layer_mapper`) | 3D 점유 지도 — `octomap_server` (의존성은 Dockerfile 에 이미 있다) |
+  | 플래너 | Nav2 NavFn (2D) | Nav2 에는 없다. MoveIt+OMPL 이나 UAV 전용 플래너 |
+  | 컨트롤러 | `linear.x`/`angular.z` 만 | `linear.z` 까지 — **드라이버는 이미 지원한다** |
+
+  라이다의 수직 시야가 ±15° 뿐이라 3D 지도를 만들려면 센서도 보강해야 한다.
 - **속도 제어이지 위치 제어가 아님** — `cmd_vel`이 0이면 속도 0을 유지하지만, 외란에 밀린 뒤
   원위치로 돌아가지는 않는다. 웨이포인트 비행에는 위치 루프가 필요하며, Nav2가 그 역할을 한다.
 - **짐벌이 각속도 댐핑만 함** — 순항 중 기체가 5~15° 기울면 카메라도 같이 기운다.
@@ -327,15 +439,120 @@ Spot.proto 절대경로 변형과 같은 부류의 현상. 저장 후
 
 ---
 
-## 7. 파일 맵
+## 7. 고도 회피 — 2.5D 레이어드 (경로 1)
+
+> 📘 **직접 돌려보는 방법과 전체 구조는 [DRONE_NAV.md](DRONE_NAV.md)에 따로 정리했다.**
+> 이 장은 그중 "왜 이렇게 만들었나"의 요약이다.
+>
+> 이후 여기에 **지역(local) 고도 회피**가 더해졌다 — 주행 중 앞이 막히면 실시간으로
+> 넘어가고 지나면 되돌아온다. 그쪽은 DRONE_NAV.md 1·4장에 있다.
+
+Nav2 는 2D 플래너라 고도를 계획하지 않는다. **그 한 축만 바깥에서** 담당해
+"장애물을 넘어간다" 를 얻는다. Nav2 자체는 한 줄도 고치지 않는다
+(`map_topic` 인자 하나만 열었다).
+
+### 왜 연속 3D(경로 2)가 아닌가
+
+3D 플래너는 **계획 호출마다** 3D 탐색을 한다. 군집으로 가면 그 비용이 대수만큼
+곱해진다. 반면 이 구조는
+
+- 계획은 지금과 **똑같은 2D A***
+- 늘어나는 비용은 층당 직선 회랑 검사(수백 칸)뿐
+- 드론 1대당 노드가 **2개 → 1개로 줄었다**
+  (`pointcloud_to_laserscan` + `slam_toolbox` → `drone_layer_mapper`)
+
+### 2D 지도를 어떻게 나눴나 — 함정과 해법
+
+층을 여러 개 쌓으면 `/{ns}/map` 하나에 여러 고도가 섞인다. 그런데 그 토픽을
+**두 소비자가 동시에** 본다 — 맵 병합기와 **드론 자신의 Nav2 static layer**.
+
+합집합을 그대로 주면 드론이 **다른 고도의 장애물 때문에 지금 고도에서는 뻥 뚫린
+공간을 못 지나간다.** 고도 회피를 하려고 만든 기능이 오히려 지금보다 나빠진다.
+그래서 토픽 역할을 셋으로 갈랐다.
+
+| 토픽 | 내용 | 소비자 | 근거 |
+|---|---|---|---|
+| `/{ns}/map` | 층 **합집합** | 맵 병합기·관제 | 병합 규칙이 `np.maximum`(장애물 OR)이라 드론이 3 m 에서 본 "빈 곳"은 UGV 가 0.8 m 에서 본 책상에 어차피 진다 — **아무것도 지우지 않는다.** 이름을 유지하므로 `map_topic_pattern` 에 그대로 걸려 **병합기는 무수정** |
+| `/{ns}/map_active` | 현재 순항 고도 한 층 | 드론 Nav2 | 플래너는 자기가 나는 층만 봐야 한다 |
+| `/{ns}/map_layer_k` | 후보 층 | `altitude_selector` | 어느 층이 열렸는지 판단 |
+
+### 왜 slam_toolbox 를 뺐나
+
+드라이버가 GPS 절대좌표를 그대로 odom 으로 발행하므로 자세가 이미 정답값이다.
+slam_toolbox 는 사실상 점유 격자 누적기로만 쓰이고 있었다. 맵 병합이 이미
+`odom_is_world_absolute: true` 로 같은 가정 위에 서 있으므로 새 가정도 아니다.
+`{ns}/map → {ns}/odom` 은 항등이라 static TF 하나로 대체했다.
+
+  대가: 루프 클로저·드리프트 보정이 없다. 실기 이식 때는 3D SLAM 이 필요하다.
+
+### 실측
+
+| 상황 | 층 판정 | 결과 |
+|---|---|---|
+| 현재 층 막힘, 위가 열림 | `1m:X(장애물22.3%) 2m:X(3.2%) 3m:OK(0.0%)` | 3.0 m 로 **상승**, 고도 2.00→2.97 (오차 0.03 m) |
+| 현재 층 막힘, 아래가 열림 | `1m:OK(0.5%) 2m:X(5.9%) 3m:X` | 1.0 m 로 **하강**, 목표까지 3.00→0.60 m |
+| 현재 층 열림 | `2m:OK(0.0%)` | 고도 유지, 3.1 m 주행 |
+
+층별 지도가 실제로 갈리는 것도 확인했다 — 같은 순간에
+층0(1 m) 장애물 1371칸 / 층1(2 m) 933칸 / 층2(3 m) 325칸,
+층0과 층1이 **3224칸** 다르고, 합집합(1948칸)은 모든 층의 상위집합이었다.
+
+### 겪은 함정 세 가지 (전부 실측으로 잡았다)
+
+**① 하향 센서는 회전해서 달려 있다.** PROTO 의 `rotation 0 1 0 1.5708` 이 센서의
++x(시선)를 기체의 -z(아래)로 보낸다. 이걸 빠뜨리고 점을 그대로 기체 좌표로 쓰면
+**발밑 바닥이 "정면 1.9 m 앞의 벽"으로 찍힌다.** 층 지도마다 유령 장애물이 생겨
+`linear.x 0.5` 를 15초 줘도 0.33 m 밖에 못 갔다 (정상은 1.8 m — 시뮬이 실시간의
+23% 로 도는 것을 감안한 값이다). 올바른 변환은 `(sx,sy,sz) -> (sz, sy, -sx)`.
+
+**② 회랑 검사를 하드 실패로 두면 아무 층도 안 뚫린다.** 처음엔 "장애물이나 미탐색이
+한 칸이라도 있으면 탈락" 이었는데 **108개 방향 중 뚫린 곳이 0개**였다. 지도를 그려
+보니 드론 오른쪽은 5 m 넘게 비어 있었는데 1.2 m 옆 가구 한 덩이 때문에 전부
+탈락한 것이다. 이 검사의 목적은 "직선이 완벽히 비었나" 가 아니라 **"어느 층이 더
+열려 있나"** 이므로 비율 기준(장애물 2%, 미탐색 35%)으로 바꾸고, 전부 탈락하면
+**가장 덜 막힌 층**을 고르게 했다. 실제 회피는 Nav2 코스트맵이 한다.
+
+**③ 속도 명령이 위치 목표를 적분하는 계에 실제 위치로 피드백을 걸면 반드시
+오버슈트한다.** 드라이버는 `target_altitude += linear.z * dt` 로 목표 고도를 만든다.
+실제 고도가 허용오차에 들어왔을 때 `target_altitude` 는 이미 한참 지나가 있어서,
+명령을 끊어도 기체는 그 target 까지 계속 간다 — **2.0 m → 1.0 m 를 지시했는데
+0.30 m(MIN_ALTITUDE)까지 떨어졌다.** 그래서 선택기가 자기가 보낸 명령을 같은 식으로
+적분해 `target_altitude` 를 추정하고, **그 추정값** 기준으로 멈춘다. 수정 후 오차 0.03 m.
+
+### 남은 한계
+
+- **이산 층이지 연속 3D 가 아니다.** 상승과 수평이동이 섞이지 않고 순차로 일어나며,
+  층 사이 높이의 장애물은 표현되지 않는다.
+- **회랑 검사는 직선만 본다.** 직선은 막혔지만 우회로가 있는 층을 놓친다(보수적).
+  놓쳐도 Nav2 가 현재 층에서 우회를 시도하므로 기능이 깨지지는 않는다.
+- 천장 쪽은 여전히 사각이다. 라이다 ±15° 와 하향 센서로는 위를 못 본다.
+
+---
+
+## 8. 파일 맵
 
 | 파일 | 역할 |
 |---|---|
-| `src/Webots-SummitXL/workspace/simulator/protos/Mavic2ProMedium.proto` | 개조 PROTO |
+| `src/Webots-SummitXL/workspace/simulator/protos/Mavic2ProMedium.proto` | 개조 PROTO (기체) |
+| `.../protos/Mavic2ProMediumSensorized.proto` | 래퍼 PROTO (기체 + 라이다) — **소환은 이쪽** |
+| `.../protos/VelodyneVLP-16.proto` | 라이다 (UGV와 공용) |
 | `.../protos/Mavic2Pro/` | 메시 14개 + 텍스처 (로컬 포함) |
 | `.../simulator/simulator/drone_driver.py` | webots_ros2 플러그인 (2단 제어 + odom/TF) |
 | `.../simulator/simulator/drone_teleop.py` | 키보드 조종 (고도 축 있음) |
 | `src/webots_robot_spawner/config/fleet/*.yaml` | 드론의 스폰 좌표 (월드에 인스턴스를 박아 두지 않는다) |
 | `src/webots_python/urdf/Mavic2ProMedium.urdf.xacro` | 플러그인 연결 + 디바이스 매핑 |
 | `src/webots_python/launch/single_drone.launch.py` | 런치 (`ROBOT_ID` 방식) |
+| `src/webots_python/webots_python/drone_layer_mapper.py` | 층별 지도 (slam_toolbox 대체) — 7장 |
+| `src/webots_python/webots_python/altitude_selector.py` | 층 선택 + 순항 고도 결정 — 7장 |
+| `src/webots_python/webots_python/local_altitude_avoider.py` | **지역 고도 회피** (cmd_vel 단독 발행) — [DRONE_NAV.md](DRONE_NAV.md) |
+| `.../navigation/launch/nav2.launch.py` | `map_topic` 인자 (드론만 `map_active`) |
 | `docker-configs/*/docker-compose.yml` | `drone1` 서비스 |
+
+### 관련 문서
+
+- [DRONE_NAV.md](DRONE_NAV.md) — **자율비행 구조 + 직접 테스트하는 법**
+- [Readme 11장](Readme.md#11-drone-중형급-쿼드콥터) — 빠른 사용법
+- [INTERFACES.md](INTERFACES.md) — 세 로봇의 `cmd_vel` 의미 차이 표
+- [SPAWNER.md](SPAWNER.md) — 드론만 `synchronization TRUE`로 되돌리는 이유와 기동 순서 교착
+- [MAP_MERGE.md](MAP_MERGE.md) — 드론 맵이 병합에 들어가는 방법
+- [ugv_setup.md](ugv_setup.md) — 비교 대상인 기준 로봇

@@ -31,19 +31,34 @@
   - [11-2. cmd_vel 사용법 (UGV와 다름, 주의)](#11-2-cmd_vel-사용법-ugv와-다름-주의)
   - [11-3. 기체 구성 (Mavic 2 Pro 개조)](#11-3-기체-구성-mavic-2-pro-개조)
   - [11-4. 해결된 이슈 (트러블슈팅 기록)](#11-4-해결된-이슈-트러블슈팅-기록)
-  - [11-5. 알려진 한계 / 다음 작업](#11-5-알려진-한계--다음-작업)
+  - [11-5. 고도 회피 (2.5D 레이어드)](#11-5-고도-회피-25d-레이어드)
+  - [11-6. 알려진 한계 / 다음 작업](#11-6-알려진-한계--다음-작업)
 - [12. 로봇 소환 (Runtime Spawn)](#12-로봇-소환-runtime-spawn)
   - [12-1. 소환하기](#12-1-소환하기)
   - [12-2. 편대 매니페스트](#12-2-편대-매니페스트)
   - [12-2-1. 새 월드를 만들어 편대를 올리기까지](#12-2-1-새-월드를-만들어-편대를-올리기까지)
-  - [12-3. 구조 (몸 / 뇌 / 컨테이너)](#12-3-구조-몸--뇌--컨테이너)
-  - [12-3-1. 기동 순서 (왜 드론만 다른가)](#12-3-1-기동-순서-왜-드론만-다른가)
-  - [12-4. 주의사항 / 트러블슈팅](#12-4-주의사항--트러블슈팅)
+  - [12-3. 구조 요약 (몸 / 뇌 / 컨테이너)](#12-3-구조-요약-몸--뇌--컨테이너)
+  - [12-4. 자주 걸리는 것](#12-4-자주-걸리는-것)
 - [향후 계획](#향후-계획)
 - [참고 문서 (References)](#참고-문서-references)
 
-> 📖 별도 문서: **[WORLD_GEN.md](WORLD_GEN.md)** (월드 생성 — 무작위 방/복도 포함, OS별 명령어) ·
-> [MAP_MERGE.md](MAP_MERGE.md) (지도 병합) · [drone_setup.md](drone_setup.md) (드론)
+### 📖 문서 지도
+
+이 Readme는 **설치·실행·전체 그림**을 다룬다. 주제별 깊은 내용은 아래 문서에 있다.
+
+| 문서 | 다루는 것 | 언제 보나 |
+|---|---|---|
+| **[INTERFACES.md](INTERFACES.md)** | 토픽·서비스·프레임·환경변수 **총람** | "무엇을 보내면 무엇이 나오나"가 궁금할 때. 웹/외부 연동 개발자 1순위 |
+| [WORLD_GEN.md](WORLD_GEN.md) | 월드(환경) 만들기 4종 + OS별 명령어 | 새 지형이 필요할 때 |
+| [SPAWNER.md](SPAWNER.md) | 로봇 소환 구축 기록 (몸/뇌 분리, 기동 순서, 잔여 몸) | 소환이 뜻대로 안 될 때, 새 로봇 종류를 더할 때 |
+| [MAP_MERGE.md](MAP_MERGE.md) | 여러 로봇 지도를 `/map_merged`로 합치기 | 관제 화면·전역 좌표를 다룰 때 |
+| [ugv_setup.md](ugv_setup.md) | **UGV(SummitXL)** 구성 — 메카넘·라이다·SLAM·Nav2 | 기준 로봇의 동작을 알아야 할 때 |
+| [spot_driver_functions.md](spot_driver_functions.md) | **Spot** 드라이버 함수 설명서 + 자율주행 테스트 절차 | 사족보행 제어를 손볼 때 |
+| [SPOT_NAV.md](SPOT_NAV.md) | **Spot 자율주행 튜닝 기록** (cmd_vel 단위·보행 케이던스·측정 함정) | Spot이 경로를 못 따라갈 때 |
+| [drone_setup.md](drone_setup.md) | **드론** 기체 구성과 비행 제어 | 비행 거동·게인을 손볼 때 |
+| [DRONE_NAV.md](DRONE_NAV.md) | **드론 자율비행** 구조 + 직접 테스트 방법 | 목표점을 주거나 고도 회피를 손볼 때 |
+| [SPOT_NAV.md](SPOT_NAV.md) | **Spot 자율주행** 튜닝 기록 + 이슈/해결 모음 | Spot 속도·보행·Nav2 파라미터를 손볼 때 |
+| [DATA_COLLECTION.md](DATA_COLLECTION.md) | 카메라-라이다 수집 → KITTI 변환 | 학습용 데이터셋을 만들 때 |
 
 ## 0. 사전 요구 사항 (Prerequisites)
 - 호스트 장치 운영체제 : 윈도우, Mac, **Ubuntu(리눅스, 신규 지원)**
@@ -180,6 +195,10 @@ cd src/webots_data_collection
 python3 scripts/webots2kitti.py
 ```
 
+> 📖 이 compose는 **컨테이너만 띄우고 런치는 직접 실행**하는 구조다. 수집 토픽·출력 포맷·
+> 캘리브레이션 상수, 그리고 **학습에 쓰기 전 확인해야 할 것들**(`.bin`이 3채널인 점 등)은
+> 별도 문서로 정리해뒀다 → **[DATA_COLLECTION.md](DATA_COLLECTION.md)**
+
 ### 6-2. 공통 명령어 (모든 OS 동일)
 
 **로봇 추가**: 서비스 호출 한 번. Webots를 멈추거나 재시작하지 않고, 월드 파일이나
@@ -296,6 +315,11 @@ Windows 환경에서 Docker로 ROS 2를 돌리면서 실측으로 확인한 내�
 ```
 완전히 새로운 목적(예: 새로운 센서 파이프라인)이라면, 기존 패키지 중 하나에 억지로 끼워넣기보다 `webots_data_collection`과 같은 구조로 새 ament_python 패키지를 하나 만드는 것을 추천.
 
+> 🚗 **UGV(SummitXL Steel)** 는 이 프로젝트의 **기준 로봇**이라, 아래 10·11장이
+> "UGV와 무엇이 다른가"로 쓰여 있다. UGV 자체의 구성 — 메카넘 `cmd_vel`,
+> 라이다 → 스캔 → SLAM → Nav2 사슬, Nav2 파라미터, `/clock`을 `ugv1`만 발행하는 함정 —
+> 은 별도 문서로 정리해뒀다 → **[ugv_setup.md](ugv_setup.md)**
+
 ## 10. Spot (사족보행 로봇)
 
 Boston Dynamics Spot을 [seo2730/webots_ros2_spot](https://github.com/seo2730/webots_ros2_spot) (MASKOR/webots_ros2_spot 포크)로 연동. UGV(SummitXL)와 별개 흐름이라 여기 따로 정리.
@@ -374,7 +398,13 @@ Spot에는 UGV의 Velodyne 같은 2D 라이다가 없고, 뎁스카메라 5개(`
 3. SLAM Toolbox/Nav2는 이 `/spot1/scan`을 UGV와 완전히 동일한 방식(`navigation` 패키지의 `nav2.launch.py` 그대로 재사용)으로 사용
 
 ### 10-4. cmd_vel 사용법 (UGV와 다름, 주의)
-Spot의 `/spot1/cmd_vel`은 UGV처럼 진짜 속도(m/s)가 아니라, Bezier 보행의 **걸음 크기(StepLength) 배율**로 쓰임 (`linear.x * 0.15`). UGV 감각으로 `linear.x: 1.0` 이상을 주면 보폭이 너무 커져서 넘어짐 — 그래서 `spot_driver.py`에 `MAX_STEP_LENGTH(0.05)`/`MAX_YAW_RATE(0.5)` 상한 클램프를 걸어둠. 그래도 **권장 입력 범위는 `linear.x`/`angular.z` 둘 다 -0.5~0.5 정도**.
+Spot의 `/spot1/cmd_vel`은 **UGV와 같은 진짜 단위(m/s, rad/s)** 다. 내부적으로 Bezier 보행의 걸음 크기(StepLength)로 환산되는데, **전진은 비선형**이다 — 보폭이 작을수록 효율이 높아서 계수 하나로는 저속이 33% 초과속했다. 회귀로 얻은 `v = SPEED_COEF·L^0.81`을 역산해 쓴다. 회전은 선형(`YAW_PER_RADPS = 1.9`).
+
+> 🔄 **2026-08-16 변경.** 예전에는 `linear.x`가 보폭 배율(`×0.15`)이었다. Nav2의 DWB가 그것을 m/s로 알고 궤적을 예측해 **회전이 예측의 절반만 돌면서 경로를 못 따라갔다.** 실측 근거와 환산 계수는 [spot_driver_functions.md](spot_driver_functions.md#cmd_vel-단위), 튜닝 전 과정은 [SPOT_NAV.md](SPOT_NAV.md)에 있다.
+
+보폭 상한(`MAX_STEP_LENGTH 0.080`)과 회전 상한(`MAX_YAW_RATE 0.5`)으로 클램프되어, 현재 케이던스 운용점에서 **약 0.58 m/s / 0.263 rad/s**가 최대다. 그 이상을 줘도 잘린다. 반대로 **약 0.149 m/s 미만은 못 낸다** — 보폭 하한 때문에 그 속도로 나간다.
+
+> ⚠️ 위 **절대 속도값은 재측정 대기 중이다.** 시뮬 속도를 23% 고정으로 가정하고 쟀는데 실제로는 부하에 따라 23~90%로 변한다 ([SPOT_NAV.md 4장](SPOT_NAV.md#-속도를-벽시계로-쟀다)). 단위가 m/s라는 것과 상한·하한이 존재한다는 사실은 유효하다.
 ```bash
 ros2 topic pub /spot1/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.3, y: 0.0, z: 0.0}, angular: {z: 0.0}}" -r 10
 ```
@@ -398,22 +428,22 @@ ros2 topic pub /spot1/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.3, y: 0.0,
 - ~~**맵이 로봇 주변 반경 1.5m 감옥처럼 나옴**~~ → **해결.** `depthimage_to_laserscan`이 아래로 기울어진 뎁스카메라의 "1~2m 앞 바닥"을 장애물로 읽은 것. `pointcloud_to_laserscan` + z 높이 필터로 교체해서 해결 (10-3 참고).
 - ~~**주행할수록 위치가 틀어지고 빈 공간에 유령 장애물이 생김**~~ → **해결.** MASKOR 원본 `spot_driver.py`의 odom 계산에 "로봇이 180도 돌아서 스폰"을 전제한 마이너스 부호가 하드코딩되어 있었음. 우리 월드(정방향 스폰)에서는 odom이 이동 방향과 반대로 나와, SLAM이 매 스캔 잘못된 사전 추정에서 출발 → 맵 오염 + 이동량 비례 드리프트. **판별법**: Spot의 odom은 supervisor 정답 좌표 기반이라 원리상 드리프트 0이어야 하므로, `map→odom` 보정량(tf2_echo)이 수십 cm 이상이면 무조건 좌표 변환 버그.
 - ~~**맵이 실제 세계와 180도 뒤집혀 그려짐**~~ → **해결.** 위 버그를 "접속 시점 자세 기준 상대좌표"로 고쳤더니, 드라이버가 재접속하던 순간 로봇이 이전 주행 자리에서 ~185도 돌아서 있어서 그 방향이 맵의 기준축이 되어버림 (IMU 정답 yaw와 odom yaw를 대조해 184.8° 차이로 확정). 최종적으로 **UGV `robot_driver.py`와 동일하게 월드 절대좌표를 odom으로 그대로 발행**하도록 변경 → 시작 자세·재시작 순서와 무관하게 맵이 항상 월드와 정렬됨.
-- ~~**Nav2 리커버리(spin/backup)가 전부 Abort됨**~~ → **해결.** `nav2.yaml`의 behavior_server에 `local_frame`/`robot_base_frame` 키가 없어서 네임스페이스 없는 기본값(`odom`/`base_link`)을 찾다 실패한 것. 키 추가 + `nav2.launch.py` 재작성 규칙에 `local_frame` 포함으로 해결. **UGV에도 잠재해 있던 버그라 UGV 리커버리도 함께 고쳐짐.**
+- ~~**Nav2 리커버리(spin/backup)가 전부 Abort됨**~~ → **해결.** behavior_server가 네임스페이스 없는 기본값(`odom`/`base_link`)을 찾다 실패한 것. 처음엔 `local_frame` 키를 넣어 고쳤다고 봤는데 **Humble의 `nav2_behaviors`에 그런 파라미터는 없어서 조용히 무시되고 있었다.** 실제 이름은 `global_frame`이고, RewrittenYaml의 치환값(`{ns}/map`)이 behavior_server에는 맞지 않아 `nav2.launch.py`가 그 노드에서만 `{ns}/odom`으로 덮어쓴다. 자세한 증상·근거는 [ugv_setup.md 5장](ugv_setup.md#5-nav2-파라미터에서-실제로-중요한-값들). **UGV·드론에도 잠재해 있던 버그라 셋 다 함께 고쳐짐.**
 
 ### 10-7. UGV와 다른 점 / Spot에서 고려해야 할 사항
 
 | 항목 | UGV (SummitXL) | Spot |
 |---|---|---|
 | 이동 방식 | 바퀴 (메카넘) | 다리 (Bezier 보행) |
-| `cmd_vel` 의미 | 진짜 속도(m/s) | **걸음 크기 배율** (10-4 참고, ±0.5 권장) |
+| `cmd_vel` 의미 | 진짜 속도(m/s) | 진짜 속도(m/s) — 약 0.149~0.58 m/s 구간만 (10-4 참고) |
 | 넘어짐 | 불가능 | **가능** — 큰 cmd_vel, 충돌, 급회전에 넘어질 수 있음 |
 | 주 센서 | Velodyne 라이다 (360도, ~50m) | 뎁스카메라 5개 합성 (10m, 카메라 사이 사각지대 있음) |
 | odom 출처 | GPS+IMU 장치값 (월드 절대좌표) | supervisor 정답값 (월드 절대좌표, 동일 컨벤션으로 통일함) |
 
 **운용할 때 주의할 것들:**
 1. **넘어지면 복구가 안 됨** — 넘어진 뒤에는 stand_up으로도 못 일어나는 경우가 많고, odom은 정답값이라 넘어진 자세를 그대로 반영해 SLAM/Nav2가 이상해짐. 넘어지면 Webots 월드 리로드(`Ctrl+Shift+R`) + `docker compose restart spot1`이 가장 빠른 복구.
-2. **Nav2 속도 튜닝 여지** — Nav2는 cmd_vel을 진짜 속도로 알고 보내는데 Spot은 걸음 배율로 해석 + 상한 클램프 때문에 Nav2 기대보다 느리게 이동함. 경로 추종이 답답하거나 리커버리가 자주 돌면 `nav2.yaml`의 속도/가속 상한을 Spot용으로 낮추는 튜닝 필요 (현재는 UGV와 같은 파라미터 공유).
-3. **footprint 미조정** — `nav2.yaml`의 로봇 footprint가 UGV 기준(0.7×0.5m)임. Spot은 다리 벌림 폭이 달라서 좁은 통로 통과/충돌 여유 판단이 부정확할 수 있음.
+2. **Nav2 파라미터는 Spot 전용이 따로 있음** — `navigation/param/nav2_spot.yaml`. cmd_vel 단위를 m/s로 고치고 속도·가속·footprint를 Spot에 맞췄다. 근거와 실측표는 그 파일 머리말에 있다. ⚠️ 스캔 `range_min`이 0.5 m인데 footprint 반길이가 0.55 m라 **자기 몸 끝에 닿은 장애물은 코스트맵에 안 보인다** — 접촉 사고의 주원인.
+3. **footprint는 길이만 늘렸다** — `nav2_spot.yaml`에서 1.1×0.5m(몸통 실측). **폭은 일부러 UGV와 같게 뒀다** — 1.2×0.6으로 키웠더니 내접 반경이 0.30m가 되어 전역 플래너가 가구 사이를 통행 불가로 보고 `failed to create plan`을 냈다 ([SPOT_NAV.md 3장 ④](SPOT_NAV.md#-footprint-폭을-키웠더니-경로가-아예-안-나왔다)).
 4. **뎁스카메라 사각지대** — 카메라 5개가 대부분 방향을 커버하지만 카메라 FOV 사이 틈이 있어, 정확히 사각에 있는 얇은 장애물은 스캔에 안 잡힐 수 있음.
 5. **새 센서 노드 추가 시 `use_sim_time: True` 필수** — 빠뜨리면 벽시계 스탬프 때문에 SLAM이 데이터를 전부 버림 (10-6의 사례).
 6. **Spot 여러 대는 아직 미지원** — 월드의 `DEF Spot` 이름과 드라이버의 `robot_def` 기본값이 1대 기준. 2대 이상은 DEF 이름 분리 + xacro `robot_def` 인자 전달 작업이 필요.
@@ -443,8 +473,23 @@ docker compose -f docker-configs/windows/docker-compose.yml up drone1
 | `/drone1/odom` | 출력 | 위치·자세·속도 (GPS + IMU) |
 | `/tf` | 출력 | `drone1/odom → drone1/base_link` |
 | `/drone1/camera/image_color` | 출력 | 짐벌 카메라 영상 |
+| `/drone1/Velodyne_VLP_16/point_cloud` | 출력 | 라이다 3D 클라우드 |
+| `/drone1/scan` | 출력 | 2D 스캔 (클라우드에서 변환) |
+| `/drone1/map` | 출력 | SLAM 맵 (맵 병합 참여) |
 
-> SLAM/Nav2는 아직 붙이지 않았다. 드론에 거리 측정 센서가 없어서다 (단계 3에서 추가 예정).
+| `/drone1/navigate_to_pose` | 액션 | Nav2 목표점 (UGV와 동일, 고도 고정) |
+| `/drone1/goal_pose_3d` | 입력 | **층을 골라서** 가는 목표 (아래 11-6) |
+| `/drone1/map_active` | 출력 | 현재 순항 고도 한 층 (Nav2가 이걸 본다) |
+| `/drone1/map_layer_{0,1,2}` | 출력 | 후보 층별 지도 |
+| `/drone1/altitude_status` | 출력 | 층 선택 근거 로그 |
+
+> **Nav2는 UGV 파라미터를 그대로 공유한다.** 지상 로봇 전제라 못 쓸 줄 알았는데 실측해
+> 보니 그대로 동작했다 — Nav2는 `linear.x`/`angular.z`만 쓰고, 드라이버는 `linear.z`가 0이면
+> 목표 고도를 유지하기 때문이다. 그래서 2D 내비게이션이 정속 수평 비행으로 번역된다.
+> 4 m 목표 3회 SUCCEEDED, 최종 오차 0.13 / 0.20 / 0.15 m, 고도는 2.00 m 고정 유지.
+>
+> ⚠️ **2D 내비게이션이지 3D 경로계획이 아니다.** 고도는 계획 대상이 아니라 드라이버가
+> 붙잡고 있는 상수다. 장애물 위로 넘어가거나 아래로 지나가는 경로는 만들지 못한다.
 
 ### 11-2. cmd_vel 사용법 (UGV와 다름, 주의)
 
@@ -499,11 +544,29 @@ docker exec -it drone1_brain_windows bash -c \
 
 순정 `Mavic2Pro.proto` 기준으로 **크기 ×2, 질량·추력/토크 상수 ×7** (0.907kg → 6.35kg). 질량과 추력을 같은 비율로 키웠기 때문에 추력 대 중량비가 보존되고, 순정 제어 법칙이 그대로 유효하다.
 
-- PROTO: `workspace/simulator/protos/Mavic2ProMedium.proto`
+- PROTO: `workspace/simulator/protos/Mavic2ProMedium.proto` (기체)
+- 래퍼 PROTO: `workspace/simulator/protos/Mavic2ProMediumSensorized.proto` (기체 + 라이다) ← **소환은 이쪽**
 - 메시·텍스처: `workspace/simulator/protos/Mavic2Pro/` (아래 11-4 참고)
-- 월드 배치: `DEF DRONE1 Mavic2ProMedium { translation -6.5 5.5 0.13, name "drone1" }`
+- 월드 배치: 이제 월드에 정적으로 두지 않는다. 편대 매니페스트가 소환한다 → [SPAWNER.md](SPAWNER.md)
 
-내장 센서는 **GPS, InertialUnit, Gyro, Compass, 짐벌 카메라**(3축, `cameraSlot`). 거리 측정 센서는 없음. 추가하려면 `bodySlot`(동체 고정) 또는 `cameraSlot`(짐벌 장착)을 쓴다 — SummitXL에 Velodyne 다는 방식과 동일.
+센서 구성:
+
+| 디바이스 | Webots 이름 | 어디에 | 용도 |
+|---|---|---|---|
+| GPS | `gps` | 기체 PROTO | 위치·속도 → odom |
+| InertialUnit | `inertial unit` | 기체 PROTO | roll/pitch/yaw |
+| Gyro | `gyro` | 기체 PROTO | 각속도 (자세 D항) |
+| Compass | `compass` | 기체 PROTO | 선언만 — 드라이버는 IMU yaw를 쓴다 |
+| 짐벌 카메라 400×240 | `camera` | 기체 PROTO `cameraSlot` | 영상 |
+| **Velodyne VLP-16** | `Velodyne_VLP_16` | **래퍼 PROTO `bodySlot`** | **SLAM** |
+
+라이다는 동체 위 0.12 m에 얹었다. 그 높이는 아래쪽 광선(±15°)이 동체·랜딩기어·프로펠러를 스치지 않도록 계산해서 고른 값이고, 헤드리스로 재서 확인했다(자기 몸 반사 0개, 수평 광선이 10 m 벽을 10.002 m로 읽음). 근거는 래퍼 PROTO 주석에 있다.
+
+> **라이다에 질량을 주지 않았다** (`lidarPhysics FALSE`). VLP-16 실물은 0.83 kg이라 켜면 본체(2.8 kg) 대비 +30%고, `K_VERTICAL_THRUST`(68.5)부터 다시 잡아야 한다. 탑재 중량 영향까지 보려면 TRUE로 켜되 호버 추력을 재측정할 것.
+
+> **1 m 이내는 안 보인다.** VelodynePuck의 `minRange`가 1 m다. 좁은 복도나 벽 가까이에서 벽이 사라지므로, 자율 비행을 붙일 때 안전 여유를 그 이상으로 잡아야 한다.
+
+**왜 뎁스카메라가 아니라 라이다인가** — UGV와 파이프라인이 100% 같아진다(`Velodyne → pointcloud_to_laserscan → slam_toolbox`). 뎁스는 Spot처럼 시야를 채우려면 5개 + `multi_scan_merger`가 필요해 로봇당 노드가 6개 늘고, 하나당 FOV가 90° 남짓이라 제자리 요잉이 잦은 드론에 불리하다.
 
 ### 11-4. 해결된 이슈 (트러블슈팅 기록)
 
@@ -515,9 +578,43 @@ docker exec -it drone1_brain_windows bash -c \
 
 4. **Webots GUI에서 월드를 저장하면 드론 컨트롤러가 `"<none>"`으로 바뀜** — Spot.proto 절대경로 변형과 같은 부류의 현상. 저장 후 `controller "mavic2pro_medium"`인지 확인할 것.
 
-### 11-5. 알려진 한계 / 다음 작업
+### 11-5. 고도 회피 (2.5D 레이어드)
 
-- **거리 센서 없음** — 자율 비행·장애물 회피에 필요. 뎁스카메라(`cameraSlot`, 짐벌 안정화를 공짜로 받음) + 하향 거리센서 조합이 유력. 이게 붙어야 SLAM/Nav2를 연결할 수 있다.
+> 📘 구조 전체와 **직접 테스트하는 명령어**는 [DRONE_NAV.md](DRONE_NAV.md)에 있다.
+
+Nav2는 2D라 고도를 계획하지 않는다. 그 **한 축만 바깥에서** 담당해 "장애물을 넘어간다"를 얻는 구조다. Nav2 자체는 손대지 않는다.
+
+```
+Velodyne(수평) ─┐
+                ├─▶ drone_layer_mapper ─┬─▶ /map          층 합집합 ─▶ 맵 병합기
+down_depth(하향)┘                        ├─▶ /map_active  현재 층   ─▶ Nav2
+                                         └─▶ /map_layer_k          ─▶ altitude_selector
+                                                                          │
+                      /goal_pose_3d ─▶ 층 선택 ─▶ 고도 이동 ─▶ /goal_pose ─▶ Nav2
+```
+
+```bash
+# 층을 골라서 가는 목표 (고도 회피 O)
+ros2 topic pub -1 /drone1/goal_pose_3d geometry_msgs/msg/PoseStamped \
+  "{header: {frame_id: 'drone1/map'}, pose: {position: {x: -2.9, y: 4.3}, orientation: {w: 1.0}}}"
+# 기존처럼 고도 고정으로 가려면 /drone1/goal_pose 를 그대로 쓰면 된다
+```
+
+**왜 3D 플래너가 아닌가** — 계획 비용이 군집에서 대수만큼 곱해진다. 이 구조는 계획을 지금과 똑같은 2D A*로 유지하고, 늘어나는 비용은 층당 회랑 검사(수백 칸)뿐이다. 오히려 드론 1대당 노드가 **2개→1개로 줄었다**(`pointcloud_to_laserscan` + `slam_toolbox` → `drone_layer_mapper`).
+
+실측 (my_world, 층 1/2/3 m):
+
+| 상황 | 층 판정 | 결과 |
+|---|---|---|
+| 현재 층 막힘, 위가 열림 | `1m:X(장애물22.3%) 2m:X(3.2%) 3m:OK(0.0%)` | 3.0 m로 **상승**, 고도 2.00→2.97 (오차 0.03 m) |
+| 현재 층 막힘, 아래가 열림 | `1m:OK(0.5%) 2m:X(5.9%) 3m:X` | 1.0 m로 **하강**, 목표까지 3.00→0.60 m |
+| 현재 층 열림 | `2m:OK(0.0%)` | 고도 유지, 3.1 m 주행 |
+
+### 11-6. 알려진 한계 / 다음 작업
+
+- **여전히 3D 경로계획은 아니다** — 11-6의 고도 회피는 **이산적인 층 선택**이지 연속 3D 경로가 아니다. 상승과 수평이동이 섞이지 않고 순차로 일어나고, 층 사이 높이의 장애물은 표현하지 못한다. 아래는 그 배경. Nav2의 플래너는 `nav_msgs/OccupancyGrid`(2D 격자) 위에서 돌고, 고도는 계획 변수가 아니라 드라이버가 잡고 있는 상수다(실측 3회 모두 1.99~2.00 m로 고정). 장애물 위를 넘거나 아래로 지나는 경로는 원리적으로 나올 수 없다. 3D로 가려면 ① 3D 점유 지도(`octomap_server` — 의존성은 Dockerfile에 이미 들어 있다) ② 3D 플래너(Nav2에는 없다. MoveIt+OMPL이나 UAV 전용 플래너) ③ `linear.z`를 쓰는 컨트롤러(드라이버는 이미 지원)가 필요하다.
+- **드론의 맵은 비행 고도의 수평 단면** — `pointcloud_to_laserscan`의 높이 필터가 기체에 붙은 `base_link` 기준이라 2 m로 날면 2 m 단면이 찍힌다. 덕분에 바닥 반사는 자동으로 걸러지지만, 고도를 크게 바꾸면 다른 단면이 같은 맵에 겹친다. **매핑 중에는 고도를 유지하는 편이 좋다.** 지상 로봇의 맵과 병합할 때도 이 점이 차이를 만든다.
+- **1 m 이내 사각** — 위 11-3 참고. 장애물 회피를 붙이려면 하향/근접 센서를 추가해야 한다 (`bodySlot`의 `extraBodySlot` 필드가 그 자리다).
 - **속도 제어이지 위치 제어가 아님** — `cmd_vel`이 0이면 속도 0을 능동 유지하지만(드리프트 0.009 m/s), 바람 같은 외란에 밀린 뒤 원위치로 돌아가지는 않는다. 웨이포인트 비행에는 위치 루프가 추가로 필요하며, Nav2를 붙이면 Nav2가 그 역할을 한다.
 - **짐벌이 각속도 댐핑만 함** — 순항 중 기체가 5~15° 기울면 카메라도 같이 기운다. 정찰 용도로는 자세 자체를 상쇄하도록(`-roll`/`-pitch`) 바꾸는 편이 낫다.
 
@@ -647,7 +744,7 @@ docker compose -f docker-configs/windows/docker-compose.yml up -d
 ```
 
 편대가 뜨기까지 30초쯤 걸린다. `fleet_start_delay`가 20초라 느린 게 아니라
-[기동 순서](#12-3-1-기동-순서-왜-드론만-다른가)를 지키는 중이다.
+[기동 순서](SPAWNER.md#7-기동-순서-왜-드론만-다른가)를 지키는 중이다.
 
 **재빌드가 필요한 때 / 아닌 때**
 
@@ -658,7 +755,7 @@ docker compose -f docker-configs/windows/docker-compose.yml up -d
 | compose 서비스 구성 | `up -d` |
 | 파이썬 소스 (드라이버·소환기) | `build` 후 `up -d` |
 
-### 12-3. 구조 (몸 / 뇌 / 컨테이너)
+### 12-3. 구조 요약 (몸 / 뇌 / 컨테이너)
 
 세 층으로 나뉜다. **몸과 뇌는 1:1이어야 하지만, 뇌와 컨테이너는 그럴 이유가 없다** —
 이 구분이 구조의 핵심이다.
@@ -681,119 +778,47 @@ ugv3 (런타임 소환된 몸) ←TCP→ 이 뇌만 fleet 컨테이너가 띄운
 - **뇌(제어·경로)** 는 로봇별 컨테이너가 담당한다. 컨테이너 경계가 있어야
   `cpuset`으로 코어를 고정하거나 `cpus`로 상한을 걸 수 있다
 - **매니페스트에 없는 런타임 소환**만 fleet 컨테이너가 뇌까지 띄운다.
-  이름과 자리가 런타임에 정해져 기다려 줄 컨테이너가 없기 때문이다.
   그 로그는 `/tmp/spawned_robots/{robot_id}.log` (fleet 컨테이너 안)
 
-> ⚠️ 컨테이너를 나눠도 **CPU 총량이 늘지는 않는다.** compose에 `cpus`/`memory` 제한이
-> 없으면 컨테이너는 호스트 코어를 그냥 공유하고, OS는 컨테이너가 아니라 프로세스를
-> 스케줄한다. 컨테이너 경계가 주는 것은 **코어 고정·자원 상한·장애 격리·개별 재시작**이다.
+**compose는 매니페스트에서 생성한다** (위 12-2-1의 ②). 손으로 유지하면 이중 관리가 되고,
+어긋나도 아무 에러 없이 조용히 틀린다. `# >>> FLEET GENERATED` 마커 사이만 갈아 끼우므로
+`master`/`fleet` 서비스와 주석은 그대로 남고, `--check`를 붙이면 고치지 않고 최신인지만
+확인한다(CI용). 셸별 문법과 이미지 이름(우분투 `ubuntu-master`, 맥 `mac-master`)은
+[WORLD_GEN.md 2장](WORLD_GEN.md#2-os별-실행-방법-중요)에 표로 있다.
 
-compose는 매니페스트에서 생성한다. 손으로 유지하면 매니페스트와 이중 관리가 된다:
+> 📖 **왜 이렇게 나눴는지, 로봇 종류 정의표, 소환 한 번에 일어나는 일, 빈 자리를 고르는
+> 규칙, 기동 순서 교착, 잔여 몸 정책, 파라미터 전체는 별도 문서로 정리해뒀다 →
+> [로봇 소환 구축 기록](SPAWNER.md)**
 
-```bash
-# Ubuntu / macOS / Git Bash / WSL
-docker run --rm -v "$PWD:/w" -w /w windows-master \
-  python3 src/webots_robot_spawner/scripts/gen_fleet_compose.py --fleet default.yaml
-```
-```bat
-REM Windows cmd.exe — $PWD 도 ${PWD} 도 통하지 않는다
-docker run --rm -v "%cd%:/w" -w /w windows-master ^
-  python3 src/webots_robot_spawner/scripts/gen_fleet_compose.py --fleet default.yaml
-```
-```powershell
-# Windows PowerShell — ${PWD} 로 감싸야 함. "$PWD:/w" 는 PowerShell 이 $PWD: 를
-# 드라이브 한정 변수로 읽어서 확장에 실패한다.
-docker run --rm -v "${PWD}:/w" -w /w windows-master `
-  python3 src/webots_robot_spawner/scripts/gen_fleet_compose.py --fleet default.yaml
-```
+### 12-4. 자주 걸리는 것
 
-> 셸별 문법과 이미지 이름(우분투는 `ubuntu-master`, 맥은 `mac-master`)은
-> [WORLD_GEN.md 2장](WORLD_GEN.md#2-os별-실행-방법-중요)에 표로 정리해 뒀다.
+깊은 배경은 [SPAWNER.md 10장](SPAWNER.md#10-트러블슈팅)에 있고, 여기는 목록만 둔다.
 
-`# >>> FLEET GENERATED` 마커 사이만 갈아 끼우므로 `master`/`fleet` 서비스와 주석은
-그대로 남는다. `--check`를 붙이면 고치지 않고 최신인지만 확인한다(CI용).
-
-- 맵 병합·RViz 표시는 손댈 것이 없다. 어떻게 태어난 로봇이든 `robot_registrar`로
-  등록해서 마스터 입장에선 구분되지 않는다 ([MAP_MERGE.md](MAP_MERGE.md) 참고)
-- Docker 소켓을 쓰는 방식은 **일부러 만들지 않았다.** 소켓 경로가 플랫폼마다 달라
-  (Linux 유닉스 소켓 / Windows 네임드 파이프 / Mac Desktop VM) 크로스 플랫폼 전제가 깨진다.
-
-### 12-3-1. 기동 순서 (왜 드론만 다른가)
-
-`compose up` 할 때 순서가 중요하다. 세 가지가 얽혀 있다.
-
-| 서비스 | 기다리는 것 | 이유 |
-|---|---|---|
-| ugv / spot | `fleet`의 **healthcheck** (`service_healthy`) | 소환기가 몸을 다 확정한 뒤 드라이버가 붙어야 한다 |
-| **drone** | `fleet`의 **기동만** (`service_started`) | 아래 교착 때문에 먼저 떠야 한다 |
-
-소환기는 몸을 다 확정하면 `/tmp/fleet_ready`를 만들고, fleet의 healthcheck가 그걸 본다.
-이게 없으면 **드라이버가 옛 몸에 붙은 직후 소환기가 그 몸을 잔여물로 지워서 드라이버가
-끊기고 종료한다**(실측: 접속 t=26s, 제거 t=38s).
-
-드론만 예외인 이유는 교착이다:
-
-```
-드론 몸은 비행을 위해 synchronization TRUE
-   → compose down 하면 그 몸만 월드에 남는다
-   → Webots 가 기다려 줄 컨트롤러가 없어 시뮬을 멈춘다
-   → 소환기의 step() 이 막혀 편대 처리를 못 한다
-   → /tmp/fleet_ready 가 안 생겨 healthcheck 실패
-   → 드론 컨테이너가 안 뜬다 → 처음으로 되돌아감
-```
-
-소환기가 스스로 풀 수 없다. 시작할 때 잔여 몸의 `synchronization`을 내려도
-**supervisor의 필드 쓰기는 스텝이 돌아야 반영되는데 그 스텝에서 막혀 있다**
-(두 번 연속 기동해도 같은 몸이 계속 TRUE로 보이는 것으로 확인). 이 고리를 끊을 수
-있는 것은 그 드라이버가 붙는 것뿐이라, 드론 컨테이너만 먼저 띄운다.
-
-대신 `fleet_start_delay`가 20초다. 먼저 뜬 드론이 `robot_registrar`까지 올라올 시간을
-줘야 살아있는 드론을 잔여물로 오판해 몸을 지우지 않는다.
-
-### 12-4. 주의사항 / 트러블슈팅
-
-**PROTO는 `IMPORTABLE EXTERNPROTO`로 선언해야 한다.** 일반 `EXTERNPROTO`로는 런타임
-주입이 실패한다:
-```
-ERROR: In order to import the PROTO 'X', first it must be declared in the IMPORTABLE EXTERNPROTO list.
-```
-
-**소환된 로봇은 `synchronization FALSE`로 주입된다.** TRUE면 Webots가 뇌 접속까지
-시뮬레이션 전체를 멈추는데, 소환기 자신도 같은 시뮬에서 스텝을 밟으므로 같이 멈춰
-교착에 빠진다. 단 **드론만** 뇌 접속 확인 후 TRUE로 되돌린다 — 자세 루프가 매 물리
-스텝 돌지 않으면 뒤집혀 추락한다 ([drone_setup.md](drone_setup.md) 참고). 그래서
-드론의 뇌가 죽으면 시뮬이 멈춘다.
-
-**월드를 재로드하면 뇌들이 죽는다.** `driver` 프로세스가 종료되는데 `ros2 launch`가
-되살리지 않는다. `docker compose restart` 로 다시 띄운다. `fleet` 컨테이너는
-`restart: unless-stopped`라 스스로 돌아온다.
-
-**Webots를 켠 채 `compose down` 하면 로봇의 몸이 월드에 남는다.** 다시 올릴 때
-`stale_body_policy`(기본 `recreate`)가 처리한다:
-
-| 몸의 상태 | 처리 | 이유 |
-|---|---|---|
-| 뇌가 살아 있음 (`/robot_registry`에 보임) | **그대로 둔다** | 지우면 정상 동작 중인 드라이버가 끊기고 `ros2 launch`가 되살리지 않는다 |
-| 뇌가 없음 (잔여물) | **지우고 새로 소환** | 지난 세션 잔여물을 물려받지 않는다 |
-
-생사 판단에 `/robot_registry`를 쓰는 이유는 QoS가 `TRANSIENT_LOCAL`이라 **늦게 구독해도
-살아있는 registrar의 명함은 받고, 죽은 것의 명함은 안 오기** 때문이다. 그대로 두고
-싶으면 `stale_body_policy: adopt`.
-
-> 뇌만 다시 붙이는 방식(`attach`)은 폐기했다. 장치가 disabled 상태로 남아 센서가
-> 죽는다 — 실측: 뇌만 붙인 드론은 `wb_gps_get_values() called for a disabled device`가
-> 4726건, 같은 시점에 새로 소환한 드론은 0건이었다.
+| 증상 | 원인 / 조치 |
+|---|---|
+| `In order to import the PROTO 'X' ...` | 월드에 `IMPORTABLE EXTERNPROTO` 선언이 없다. `prepare_world.py --check` |
+| 월드는 열리는데 로봇이 안 나온다 | 매니페스트 이름과 compose의 `fleet:=` 불일치. `gen_fleet_compose.py --check` |
+| 편대가 뜨는 데 30초 걸린다 | 정상이다. `fleet_start_delay` 20초 + 기동 순서를 지키는 중 ([SPAWNER.md 7장](SPAWNER.md#7-기동-순서-왜-드론만-다른가)) |
+| 월드를 재로드했더니 로봇이 죽었다 | `driver` 프로세스가 종료되고 `ros2 launch`가 되살리지 않는다. `docker compose restart` |
+| `compose down` 했더니 몸이 월드에 남았다 | `stale_body_policy`(기본 `recreate`)가 다음 기동 때 정리한다 ([SPAWNER.md 8장](SPAWNER.md#8-잔여-몸-정책-stale_body_policy)) |
+| 소환한 드론이 이륙을 못 한다 | 동기화가 TRUE로 복원되지 않았다. 드론만 매 물리 스텝 제어 루프가 돌아야 한다 |
+| `ros2 topic hz`가 "not published yet" | 노드 100개 넘으면 CLI가 거짓말을 한다. rclpy로 직접 구독해 확인 |
 
 **despawn은 없다.** 스폰 실패 시 롤백만 한다 — 뇌가 유예 시간 안에 죽으면 몸을 씬
 트리에서 되돌려 조종 불가능한 유령 로봇이 쌓이지 않게 한다.
 
-**`ros2 topic hz`를 믿지 말 것.** 로봇이 늘어 노드가 100개를 넘으면 있는 토픽도
-"does not appear to be published yet"으로 나온다(CLI가 매번 새 참여자로 discovery를
-처음부터 함). rclpy로 직접 구독해 확인한다.
-
 ## 향후 계획
 - Gemini api 연동
-- Drone 추가 → 기체 구성·비행 검증 완료, ROS 2 연동 남음 ([11](#11-drone-중형급-쿼드콥터) 참고)
+- ~~Drone 추가~~ → 완료 (기체 개조·2단 비행 제어·ROS 2 연동 → [drone_setup.md](drone_setup.md))
+- ~~드론 자율비행~~ → 완료 (라이다 탑재 + 층별 지도 + 전역 층 선택 + 지역 고도 회피.
+  목표점 5개 중 4개 도달, 리밋 사이클 0회. [DRONE_NAV.md](DRONE_NAV.md) 참고)
+- 드론 3D 경로계획(연속) — 미착수. 지금은 **2.5D 이산 층 선택**이다
+  ([DRONE_NAV.md 8장](DRONE_NAV.md#8-알려진-한계))
+- ~~Spot 자율주행 튜닝~~ → 완료 (cmd_vel을 m/s로 환산, Spot 전용 Nav2 파라미터,
+  보행 케이던스 노출. 도달률 0~1/3 → 2/3, 배회 2~5배 → 1~2배. [SPOT_NAV.md](SPOT_NAV.md) 참고)
+- Spot 절대 속도 재측정 — **남음.** 벽시계로 재서 값이 최대 4배 틀렸다. 시뮬 시각으로
+  다시 재야 `SPEED_COEF`와 `desired_linear_vel`을 확정할 수 있다
+  ([SPOT_NAV.md 5장](SPOT_NAV.md#5-미해결--다음-작업))
 - ~~로봇 생성 자동화~~ → 완료 (서비스 호출로 UGV/Spot/드론 런타임 소환, 편대는 yaml. [12](#12-로봇-소환-runtime-spawn) 참고)
 - ~~여러 월드 지원 / 점유격자에서 월드 자동 생성~~ → 완료 (창고형·무작위 건물·점유격자
   변환·외부 월드 반입 4종. 무작위 생성은 부지에 건물을 앉히고, 방마다 출입구를,
@@ -807,14 +832,41 @@ ERROR: In order to import the PROTO 'X', first it must be declared in the IMPORT
 
 ## 참고 문서 (References)
 
-이 저장소의 문서:
+이 저장소의 문서 (위 [문서 지도](#-문서-지도)와 같은 목록, 성격별로 묶은 것):
+
+**규격 — 무엇을 주고받나**
+
+| 문서 | 다루는 것 |
+|---|---|
+| [INTERFACES.md](INTERFACES.md) | 토픽·서비스·프레임·QoS·환경변수 총람. 세 로봇의 `cmd_vel` 의미 차이 표 포함 |
+
+**만들기 — 환경과 편대**
 
 | 문서 | 다루는 것 |
 |---|---|
 | [WORLD_GEN.md](WORLD_GEN.md) | 월드(환경) 만들기 — 무작위 방/복도, 창고형, 점유격자 변환, 외부 반입. **OS별 명령어 정리 포함** |
+| [SPAWNER.md](SPAWNER.md) | 로봇 소환 구축 기록 — 몸/뇌/컨테이너 분리, 기동 순서 교착, 잔여 몸 정책, 새 로봇 종류 추가 |
+
+**로봇별**
+
+| 문서 | 다루는 것 |
+|---|---|
+| [ugv_setup.md](ugv_setup.md) | UGV(SummitXL) — 메카넘 역기구학, 라이다 → 스캔 → SLAM → Nav2 사슬, `/clock` 함정 |
+| [spot_driver_functions.md](spot_driver_functions.md) | Spot 드라이버 함수 설명서 (보행·자세·호버링·상태발행) + 자율주행 직접 테스트하는 법 |
+| [SPOT_NAV.md](SPOT_NAV.md) | Spot 자율주행 튜닝 기록 — cmd_vel 단위 환산, footprint·리커버리 함정, 측정 방법론 |
+| [drone_setup.md](drone_setup.md) | 드론 기체 구성과 2단 비행 제어, 게인 근거 |
+| [DRONE_NAV.md](DRONE_NAV.md) | 드론 자율비행(층별 지도·전역 층 선택·지역 고도 회피)과 테스트 명령어 |
+| [SPOT_NAV.md](SPOT_NAV.md) | Spot 자율주행 튜닝 기록 — cmd_vel 단위·보행 케이던스·Nav2 파라미터, 겪은 이슈와 해결 |
+
+**관제·데이터**
+
+| 문서 | 다루는 것 |
+|---|---|
 | [MAP_MERGE.md](MAP_MERGE.md) | 여러 로봇의 SLAM 지도를 `/map_merged`로 합치는 부분 |
-| [drone_setup.md](drone_setup.md) | 드론 기체 구성과 비행 제어 |
-| [spot_driver_functions.md](spot_driver_functions.md) | Spot 드라이버 함수 목록 |
+| [DATA_COLLECTION.md](DATA_COLLECTION.md) | 카메라-라이다 수집 → KITTI 변환, 학습에 쓰기 전 확인할 것 |
+
+서브모듈 쪽 문서: [src/Webots-SummitXL/README.md](src/Webots-SummitXL/README.md) (원본 프로젝트 안내),
+[src/webots_ros2_spot/README.md](src/webots_ros2_spot/README.md) (MASKOR 포크)
 
 바깥 자료:
 - Webots 공식 사용자 가이드 (User Guide)

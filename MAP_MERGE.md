@@ -77,7 +77,7 @@ fleet_spawner_windows
 | ugv1 | `/ugv1/map` | `ugv1/map` | ✅ |
 | ugv2 | `/ugv2/map` | `ugv2/map` | ✅ |
 | spot1 | `/spot1/map` | `spot1/map` | ✅ |
-| drone1 | — | — | ❌ 거리 센서 없음 |
+| drone1 | `/drone1/map` | `drone1/map` | ✅ (비행 고도의 단면) |
 
 문제는 **`ugv1/map`의 (0,0)과 `ugv2/map`의 (0,0)이 월드에서 서로 다른 지점**이라는 것이다.
 그래서 병합 전에는:
@@ -102,15 +102,16 @@ graph LR
     W[world<br/>공통 기준] -->|static TF| M1[ugv1/map]
     W -->|static TF| M2[ugv2/map]
     W -->|static TF| M3[spot1/map]
-    W -->|static TF| O4[drone1/odom]
+    W -->|static TF| M4[drone1/map]
     M1 -->|slam_toolbox| O1[ugv1/odom] --> B1[ugv1/base_link]
     M2 -->|slam_toolbox| O2[ugv2/odom] --> B2[ugv2/base_link]
     M3 -->|slam_toolbox| O3[spot1/odom] --> B3[spot1/base_link]
-    O4 --> B4[drone1/base_link]
+    M4 -->|static TF| O4[drone1/odom] --> B4[drone1/base_link]
 ```
 
 `world → {ns}/map` 변환만 알면 병합은 **좌표 변환 + 리샘플링이라는 순수 계산 문제**로 줄어든다.
-맵이 없는 로봇(드론)은 `{ns}/map` 대신 `{ns}/odom`을 매달아 위치만 관제 화면에 올린다.
+맵이 없는 로봇은 `{ns}/map` 대신 `{ns}/odom`을 매달아 위치만 관제 화면에 올린다 — 지금은
+넷 다 맵을 만들지만, 이 경로는 `has_map: false`인 로봇을 위해 그대로 남아 있다.
 
 얻는 것:
 
@@ -304,7 +305,7 @@ Humble의 TF 디스플레이에는 whitelist 필터도 없어서 프레임을 �
 각 로봇 위치에 **화살표(방향) + 이름표** 마커를 만들고 `/robot_markers` 하나로 발행한다.
 RViz에는 MarkerArray 디스플레이 **하나만** 있으면 되고, 로봇이 늘어나도 설정을 안 고쳐도 된다.
 
-발견 기준을 TF로 잡은 이유는, 맵이 없는 로봇(드론)이나 등록 노드를 안 띄운 로봇(spot1)도
+발견 기준을 TF로 잡은 이유는, 맵이 없는 로봇이나 등록 노드를 안 띄운 로봇(spot1)도
 `world`에 연결만 되어 있으면 전부 잡히기 때문이다.
 
 ### 자동으로 되는 것과 안 되는 것
@@ -387,7 +388,7 @@ Views 패널에서 **Angled View**를 고르면 3D로 볼 수 있다.
 | `map_topic_pattern` | `^/([^/]+)/map$` | 자동 탐색 정규식 |
 | `registry_topic` | `/robot_registry` | 등록 토픽 이름 |
 | `robots.{ns}.init_x/y/yaw` | — | 스폰 좌표. `odom_is_world_absolute: false`일 때만 사용 |
-| `robots.{ns}.has_map` | `true` | `false`면 맵 구독 안 함 (드론) |
+| `robots.{ns}.has_map` | `true` | `false`면 맵 구독 안 함 (위치만 표시) |
 
 ### 파라미터 — 보조 노드
 
@@ -778,18 +779,26 @@ Windows에서 X 서버(VcXsrv 등)가 안 떠 있으면 `rviz2` 프로세스가 
 > 한 번 찍히는 경우가 있는데 Ogre 셰이더 링크 경고이고 맵은 정상적으로 그려진다.
 > 맵 영역이 실제로 비어 보이면 master 서비스에 `LIBGL_ALWAYS_SOFTWARE=1`을 넣어본다.
 
-### ⑨ 드론은 병합 대상이 아니지만 화면에는 보인다
+### ⑨ 맵이 없는 로봇도 화면에는 보여야 한다
 
-`drone1`은 거리 센서가 없어 SLAM을 못 돌린다. `has_map: false`로 등록해 맵 구독은 안 한다.
-다만 관제 화면에서 위치는 보여야 하므로 **맵이 없는 로봇은 `{ns}/map` 대신 `{ns}/odom`을
-`world`에 매단다.** 이 처리가 없으면 드론이 RViz에서 아예 사라진다.
+드론이 오랫동안 그런 로봇이었다. 거리 센서가 없어 SLAM을 못 돌렸고 `has_map: false`로
+등록했다. 그래도 관제 화면에서 위치는 보여야 하므로 **맵이 없는 로봇은 `{ns}/map` 대신
+`{ns}/odom`을 `world`에 매단다.** 이 처리가 없으면 그 로봇이 RViz에서 아예 사라진다.
 
 ```
-[TF] 'world' -> ugv1/map, ugv2/map, spot1/map, drone1/odom
+[TF] 'world' -> ugv1/map, ugv2/map, spot1/map, drone1/odom     # 라이다 이전
+[TF] 'world' -> ugv1/map, ugv2/map, spot1/map, drone1/map      # 지금
 ```
 
-센서를 달고 SLAM을 붙이면 [single_drone.launch.py](src/webots_python/launch/single_drone.launch.py)의
-`has_map`을 `True`로 바꾸기만 하면 자동으로 병합에 합류한다.
+드론에 라이다(VLP-16)를 얹으면서
+[single_drone.launch.py](src/webots_python/launch/single_drone.launch.py)의 `has_map`이
+`True`가 됐고, 예고한 대로 **그 한 줄만 바뀌었을 뿐 병합 쪽은 손대지 않았다.**
+지금은 넷 다 맵을 만들지만 이 경로는 그대로 둔다 — 다음에 맵 없는 로봇을 붙일 때 쓴다.
+
+> ⚠️ **드론 맵은 다른 로봇 맵과 성격이 다르다.** 비행 고도의 수평 단면이라
+> (`drone_setup.md` 참고) 지상 로봇이 보는 것과 같은 높이의 장애물이 아니다.
+> 예를 들어 허리 높이 선반은 UGV 맵에는 벽으로, 2 m를 나는 드론 맵에는 빈 공간으로 찍힌다.
+> 병합 결과를 볼 때 이 차이를 "정렬 오류"로 오해하지 말 것.
 
 ### ⑩ 병합 맵을 Nav2에 되먹이지 말 것
 
@@ -886,7 +895,7 @@ src/webots_map_merge/
 | [master.launch.py](src/webots_map_merge/launch/master.launch.py) | 마스터 | 위 노드들 + RViz2 |
 | [single_ugv.launch.py](src/webots_python/launch/single_ugv.launch.py) | ugv | `robot_registrar` 포함 |
 | [single_spot_launch.py](src/webots_ros2_spot/launch/single_spot_launch.py) | spot | `robot_registrar` 포함 (서브모듈) |
-| [single_drone.launch.py](src/webots_python/launch/single_drone.launch.py) | drone | `robot_registrar` (`has_map: False`) |
+| [single_drone.launch.py](src/webots_python/launch/single_drone.launch.py) | drone | `robot_registrar` 포함 |
 | [robot_driver.py](src/Webots-SummitXL/workspace/simulator/simulator/robot_driver.py) | ugv | GPS 절대좌표 odom + **바퀴 관절 발행** (서브모듈) |
 | `docker-configs/*/docker-compose.yml` | — | master 실행 명령, `ROBOT_INIT_*` |
 
@@ -897,5 +906,9 @@ src/webots_map_merge/
 ### 관련 문서
 
 - [Readme.md](Readme.md) — 전체 프로젝트 사용법
+- [INTERFACES.md](INTERFACES.md) — 토픽·서비스·프레임·QoS 총람
+- [SPAWNER.md](SPAWNER.md) — 소환된 로봇이 여기 합류하기까지 (몸/뇌 분리, 잔여 몸 정책)
+- [WORLD_GEN.md](WORLD_GEN.md) — 월드 생성 (병합 맵 좌표 = 월드 좌표)
+- [ugv_setup.md](ugv_setup.md) — UGV의 GPS 절대 odom (이 문서 2장의 전제)
 - [drone_setup.md](drone_setup.md) — 드론 구축 기록 (`<extern>` 동기화 함정이 여기와 겹침)
 - [spot_driver_functions.md](spot_driver_functions.md) — Spot 드라이버 함수 정리

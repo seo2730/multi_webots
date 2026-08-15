@@ -13,10 +13,12 @@
       "Bash(sed -i \"724s|args.yard:.0f|yard \\\\* cell:.0f|\" src/webots_robot_spawner/scripts/gen_world_random.py)",
       "Bash(sed -i \"746s|f'yard: {args.yard}'|f'yard: {yard * cell:.2f}'|\" src/webots_robot_spawner/scripts/gen_world_random.py)",
       "Bash(sed -i 's|  - {x: -38.00, y: -9.75, width: 3.00, side: west}|  - {x: -14.25, y: 37.75, width: 2.50, side: north}|' WORLD_GEN.md)",
-      "Bash(MSYS_NO_PATHCONV=1 docker run --rm -v __CMDSUB_OUTPUT__:/w -w /w windows-master:latest python3 src/webots_robot_spawner/scripts/gen_world_random.py --seed 3 --name arena_s3)"
+      "Bash(MSYS_NO_PATHCONV=1 docker run --rm -v __CMDSUB_OUTPUT__:/w -w /w windows-master:latest python3 src/webots_robot_spawner/scripts/gen_world_random.py --seed 3 --name arena_s3)",
+      "Bash(cd \"d:/Document/Duck_Project/webots_multi_robot\" && sed -n '/def tick/,/^def main/p' src/webots_python/webots_python/local_altitude_avoider.py | head -60)"
     ],
     "additionalDirectories": [
-      "D:\\Document\\Duck_Project\\webots_multi_robot\\src\\webots_robot_spawner\\scripts"
+      "D:\\Document\\Duck_Project\\webots_multi_robot\\src\\webots_robot_spawner\\scripts",
+      "d:\\Document\\Duck_Project\\webots_multi_robot\\src\\webots_python\\webots_python"
     ]
   }
 }

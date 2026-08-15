@@ -476,7 +476,7 @@ docker compose -f docker-configs/mac/docker-compose.yml up -d
 ```
 
 편대가 뜨기까지 30초쯤 걸린다. 느린 게 아니라
-[기동 순서](Readme.md#12-3-1-기동-순서-왜-드론만-다른가)를 지키는 중이다.
+[기동 순서](SPAWNER.md#7-기동-순서-왜-드론만-다른가)를 지키는 중이다.
 
 **재빌드가 필요한 때 / 아닌 때**
 
@@ -535,6 +535,8 @@ PowerShell이면 `${PWD}`. [2장](#2-os별-실행-방법-중요) 참고.
 
 ## 참고
 
-- [Readme.md](Readme.md) — 전체 구성, 로봇 소환, OS별 실행
+- [Readme.md](Readme.md) — 전체 구성, OS별 실행
+- [SPAWNER.md](SPAWNER.md) — 만든 월드에 편대를 올리는 쪽 (매니페스트·기동 순서)
 - [MAP_MERGE.md](MAP_MERGE.md) — 여러 로봇의 지도를 하나로 합치는 부분
-- [drone_setup.md](drone_setup.md) — 드론 기체 구성
+- [INTERFACES.md](INTERFACES.md) — 토픽·서비스·프레임 총람
+- [ugv_setup.md](ugv_setup.md) / [spot_driver_functions.md](spot_driver_functions.md) / [drone_setup.md](drone_setup.md) — 로봇별 문서
