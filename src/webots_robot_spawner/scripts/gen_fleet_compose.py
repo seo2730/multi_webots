@@ -139,6 +139,13 @@ def service_block(robot, plat, cpus):
         # 돌지 않으면 뒤집힌다 (drone_setup.md 참고).
         f'      - ROBOT_SYNCHRONIZATION={"true" if needs_sync else "false"}',
     ]
+    if rtype == 'drone':
+        # 경로계획 모드. 손으로 바꿔 가며 시험하라고 노출해 둔다.
+        #   2d          고정 고도, Nav2 만
+        #   2.5d_local  고도 고정 + 앞이 막히면 넘어감
+        #   2.5d        목표마다 층 선택 + 지역 회피 (기본)
+        # 값 목록과 근거는 DRONE_NAV.md, 판정은 single_drone.launch.py 의 NAV_MODES.
+        lines.append('      - NAV_MODE=2.5d')
     if needs_def:
         # spot_driver 가 Supervisor 로 자기 몸을 DEF 이름으로 찾는다.
         # 소환기가 붙이는 DEF 와 같아야 한다 (robot_types.RobotType.def_name).

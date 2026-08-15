@@ -55,7 +55,7 @@ WORLDS = REPO / 'src' / 'Webots-SummitXL' / 'workspace' / 'simulator' / 'worlds'
 # 소환 대상 PROTO 들. robot_types.py 의 proto 값과 일치해야 한다.
 # 경로는 worlds/ 기준 상대 경로다.
 IMPORTABLE = [
-    '../protos/Mavic2ProMedium.proto',
+    '../protos/Mavic2ProMediumSensorized.proto',
     '../protos/SummitXlSteelSensorized.proto',
     '../protos/SpotSensorized.proto',
 ]

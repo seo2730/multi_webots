@@ -57,10 +57,51 @@
     <origin xyz="0 0 0" rpy="0 0 0"/>
   </joint>
 
+  <!-- 라이다: 동체 위 0.12 m. Mavic2ProMediumSensorized.proto 의 bodySlot 위치와
+       **같아야 한다** — 여기가 어긋나면 스캔이 실제와 다른 곳에서 나온 것처럼 변환되어
+       SLAM 이 조용히 틀린 맵을 그린다. 그 높이를 왜 0.12 로 골랐는지는 PROTO 주석 참고. -->
+  <link name="Velodyne_VLP_16">
+    <visual>
+      <geometry>
+        <cylinder radius="0.052" length="0.0727"/>
+      </geometry>
+    </visual>
+  </link>
+  <joint name="base_link_Velodyne_VLP_16_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="Velodyne_VLP_16"/>
+    <origin xyz="0 0 0.12" rpy="0 0 0"/>
+  </joint>
+
+  <!-- 하향 뎁스센서: 동체 아래 0.12 m, 정면(+x)이 아래(-z)를 보도록 y축 +90° 회전.
+       PROTO 의 배치와 **같아야 한다** (라이다와 같은 이유). -->
+  <link name="down_depth"/>
+  <joint name="base_link_down_depth_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="down_depth"/>
+    <origin xyz="-0.12 0 -0.12" rpy="0 1.5708 0"/>
+  </joint>
+
   <webots>
     <plugin type="simulator.drone_driver.main">
       <namespace>$(arg namespace)</namespace>
     </plugin>
+
+    <!-- 라이다는 Mavic2ProMediumSensorized.proto 에만 있다. 순정 Mavic2ProMedium 을
+         손으로 놓고 이 URDF 를 쓰면 드라이버가 "device not found" 경고만 내고 넘어간다
+         (치명적이지 않지만 그 드론은 SLAM 을 못 돌린다). -->
+    <device reference="Velodyne_VLP_16" type="Lidar">
+      <ros><frameName>$(arg namespace)/Velodyne_VLP_16</frameName></ros>
+    </device>
+
+    <!-- 하향 뎁스센서. 층 선택기가 /{ns}/down_depth/point_cloud 로 발밑을 본다. -->
+    <device reference="down_depth" type="RangeFinder">
+      <ros>
+        <topicName>/$(arg namespace)/down_depth</topicName>
+        <frameName>$(arg namespace)/down_depth</frameName>
+        <enabled>true</enabled>
+      </ros>
+    </device>
 
     <device reference="camera" type="Camera">
       <ros>

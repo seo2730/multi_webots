@@ -34,6 +34,10 @@ setup(
         'console_scripts': [
             'summit_telop = webots_python.summit_telop:main',
             'sim_clock_bridge = webots_python.sim_clock_bridge:main',
+            # 드론 경로 1(2.5D 레이어드) — 층별 지도 + 고도 선택
+            'drone_layer_mapper = webots_python.drone_layer_mapper:main',
+            'altitude_selector = webots_python.altitude_selector:main',
+            'local_altitude_avoider = webots_python.local_altitude_avoider:main',
         ],
     },
 )

@@ -139,6 +139,7 @@ services:
       - ROBOT_INIT_Y=5.500
       - ROBOT_INIT_YAW=0.000
       - ROBOT_SYNCHRONIZATION=true
+      - NAV_MODE=2.5d
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
                ros2 launch webots_python single_drone.launch.py"

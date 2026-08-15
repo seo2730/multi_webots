@@ -88,16 +88,25 @@ class RobotType:
 
 # 드론은 Mavic2ProMedium.proto 안에 센서·짐벌·프로펠러가 전부 들어 있어서
 # 스폰 문자열이 그대로 5줄이면 끝난다. 그래서 Phase A의 검증 대상으로 골랐다.
+#
+# 라이다를 달면서 UGV/Spot 과 같은 이유로 래퍼가 생겼다(순정 PROTO 에는 거리 센서가
+# 없다). 순정 Mavic2ProMedium 도 EXTERNPROTO 로는 계속 선언돼 있지만, 소환은 이제
+# 래퍼로만 한다 — 아래 LEGACY_ROBOT_PROTOS 참고.
+#
+#   ../protos/Mavic2ProMediumSensorized.proto
 DRONE = RobotType(
     key='drone',
-    proto='Mavic2ProMedium',
+    proto='Mavic2ProMediumSensorized',
     id_prefix='drone',
     spawn_z=0.13,           # my_world.wbt의 drone1과 같은 높이
     footprint_radius=0.35,  # 개조 Mavic 대각선 약 0.7m
     default_clearance=0.6,
     brain_package='webots_python',
     brain_launch='single_drone.launch.py',
-    has_map=False,          # 거리 센서가 없어 SLAM을 못 돌린다
+    # 라이다(VLP-16)를 얹었으므로 UGV 와 같은 파이프라인으로 맵을 만든다.
+    # 다만 드론의 맵은 **비행 고도의 수평 단면**이라는 점이 지상 로봇과 다르다
+    # (single_drone.launch.py 의 [C] 주석 참고).
+    has_map=True,
     # 🚁 드론만 True. 자세 루프가 매 물리 스텝 돌지 않으면 뒤집혀 추락한다.
     #    지상 로봇은 제어 주기가 느슨해도 넘어지지 않으므로 False 로 둔다
     #    (동기화를 켜면 그 로봇의 뇌가 죽을 때 시뮬 전체가 멈추는 대가가 있다).
@@ -151,7 +160,7 @@ ROBOT_TYPES = {t.key: t for t in (DRONE, UGV, SPOT)}
 #      - 자동 채번이 ugv1 을 다시 발급하고 (이름 충돌)
 #      - 겹침 검사가 기존 로봇을 무시해 그 위에 소환한다
 #    Phase C 에서 정적 로봇을 걷어내도, 예전 월드를 여는 경우가 있으니 남겨 둔다.
-LEGACY_ROBOT_PROTOS = frozenset({'SummitXlSteel', 'Spot'})
+LEGACY_ROBOT_PROTOS = frozenset({'SummitXlSteel', 'Spot', 'Mavic2ProMedium'})
 
 # 씬 트리에서 "이건 우리 로봇이다"라고 알아보는 데 쓰는 PROTO 이름 전체.
 # 자동 채번과 로봇 간 간격 검사가 이 목록에 의존한다.
