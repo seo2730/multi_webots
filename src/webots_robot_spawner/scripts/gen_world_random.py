@@ -662,9 +662,17 @@ def main():
     parts = [solid('ground', 0, 0, -0.05, args.size, args.size, 0.1,
                    (0.34, 0.33, 0.30))]                     # 바깥 땅
     if yard > 0:
+        # 건물 바닥은 마당과 실내를 색으로 가르는 **순수 장식**이다.
+        #
+        # 두 가지를 지킨다:
+        #   collide=False — 밟는 면은 ground 하나면 된다. 충돌체를 또 주면 바퀴가
+        #     같은 지점에서 접촉점을 두 벌 받아 물리 솔버가 과잉구속된다.
+        #   ground 위에 얹는다 — 예전엔 ground 안에 파묻고 윗면을 z=0 으로 맞췄는데,
+        #     보이는 두 면이 같은 평면이라 렌더러가 z-fighting 을 일으켰다.
+        #     ground 윗면(z=0)보다 1 mm 띄워 4 mm 두께로 올린다.
         bsize = bw * cell
-        parts.append(solid('building_floor', 0, 0, -0.015, bsize, bsize, 0.03,
-                           (0.46, 0.47, 0.50)))             # 건물 바닥
+        parts.append(solid('building_floor', 0, 0, 0.0025, bsize, bsize, 0.003,
+                           (0.46, 0.47, 0.50), collide=False))
     for i, (c0, r0, c1, r1) in enumerate(rects):
         sx = (c1 - c0 + 1) * cell
         sy = (r1 - r0 + 1) * cell

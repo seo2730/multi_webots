@@ -67,13 +67,21 @@ WALL_T = 0.3
 PILLAR = 0.5
 
 
-def solid(name, x, y, z, sx, sy, sz, color):
+def solid(name, x, y, z, sx, sy, sz, color, collide=True):
     """정적 장애물 하나. physics 를 안 붙이므로 고정된다.
 
     boundingObject 를 반드시 준다 — 없으면 LiDAR 에는 보여도 충돌하지 않아서
     로봇이 통과해 버린다.
+
+    예외는 collide=False 로 넘기는 **순수 장식**이다. 다른 충돌체와 면이 겹치는
+    슬래브에 충돌체를 또 주면, 같은 지점에서 접촉점이 두 벌 생겨 물리 솔버가
+    과잉구속된다 ("physics step could not be computed correctly").
     """
     r, g, b = color
+    bounding = f'''  boundingObject Box {{
+    size {sx:.3f} {sy:.3f} {sz:.3f}
+  }}
+''' if collide else ''
     return f'''Solid {{
   translation {x:.3f} {y:.3f} {z:.3f}
   children [
@@ -89,10 +97,7 @@ def solid(name, x, y, z, sx, sy, sz, color):
     }}
   ]
   name "{name}"
-  boundingObject Box {{
-    size {sx:.3f} {sy:.3f} {sz:.3f}
-  }}
-}}'''
+{bounding}}}'''
 
 
 def build(size, aisle, shelf_h, seed):
