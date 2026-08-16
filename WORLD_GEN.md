@@ -161,11 +161,25 @@ docker run --rm -v "$PWD:/w" -w /w windows-master python3 \
 | 정하고 싶은 것 | 옵션 | 기본 |
 |---|---|---|
 | 가로 주복도 개수 | `--corridors N` | 자동 (`--room-depth` 기준) |
-| 세로 연결복도 개수 | `--links N` | 자동 (부지 크기 기준) |
+| 세로 연결복도 개수 | `--links N` | 자동 (`0` 이면 없음) |
 | 방 개수 | `--rooms N` | 자동 |
 | 외부 출입구 개수 | `--entrances N` | 자동 (최소 1개) |
 
 전체 목록은 [3-1](#3-1-옵션--방복도출입구-개수-지정)에 있다.
+
+**칸막이 없이 텅 빈 방 하나만 필요하면** `--single-room` 을 쓴다. 로봇이나 센서
+자체를 시험할 때 — 지형이 변수로 끼면 드라이버 문제인지 지도 문제인지 가리기가
+어렵다.
+
+```bash
+# 76 x 76 m 원룸 하나 + 마당 12 m + 출입구 2개, 안은 텅 빔
+docker run --rm -v "$PWD:/w" -w /w windows-master python3 \
+  src/webots_robot_spawner/scripts/gen_world_random.py --name oneroom \
+  --single-room --density 0
+```
+
+건물 외피·마당·울타리·외부 출입구는 그대로 나오고 **안쪽만 하나로 트인다.**
+`--density` 를 주면 그 방 안에 상자가 뿌려진다.
 
 나오는 파일 세 개:
 
@@ -205,8 +219,9 @@ docker run --rm -v "$PWD:/w" -w /w windows-master python3 \
 | **`--entrances N`** | 0 = 자동 | **바깥에서 건물로 들어오는 출입구 개수.** 복도 끝에만 낸다 |
 | `--fence-h H` | 2 | 부지 울타리 높이(m) |
 | **`--corridors N`** | 0 = 자동 | **가로 주복도 개수.** 크기에 안 들어가면 줄이고 알려준다 |
-| **`--links N`** | 0 = 자동 | **세로 연결복도 개수.** 주복도들을 잇는다 |
+| **`--links N`** | -1 = 자동 | **세로 연결복도 개수.** `0` 이면 없음 (주복도가 2개 이상이면 1로 올린다) |
 | **`--rooms N`** | 0 = 자동 | **방 개수 목표.** 정하면 폭을 거기 맞춰 나눈다 (근사값) |
+| **`--single-room`** | — | **원룸** — 칸막이도 복도도 없는 방 하나. 위 세 옵션은 무시된다 |
 | `--room-depth M` | 8 | 방 깊이 기준(m). 주복도 개수를 자동으로 정할 때 쓴다 |
 | `--room-min M` | 4 | 방 최소 폭(m) |
 | `--corridor M` | 3 | 주복도 기준 폭(m). 실제 폭은 복도마다 흔들린다 |
@@ -230,6 +245,9 @@ docker run --rm -v "$PWD:/w" -w /w windows-master python3 \
 
 | 이렇게 하고 싶으면 | 이렇게 |
 |---|---|
+| **원룸 하나** (로봇·센서 시험용) | `--single-room --density 0` |
+| 원룸에 장애물만 좀 | `--single-room` |
+| 복도 하나에 방만 줄지어 | `--corridors 1 --links 0` |
 | 넓은 방 위주 (창고·강당) | `--corridors 3 --rooms 40` |
 | 잘게 나뉜 사무실 층 | `--corridors 8 --rooms 150` |
 | 복도만 있는 빈 건물 | `--density 0` |

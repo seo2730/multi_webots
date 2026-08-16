@@ -63,9 +63,14 @@ config/doorways/NAME.yaml 로 따로 저장한다. 방 사이를 오가는 경�
                       방 하나에 갇힌다
       --fence-h H     부지 울타리 높이(m). 기본 2
       --corridors N   가로 주복도 개수. 0 = 크기에 맞게 자동
-      --links N       세로 연결복도 개수. 0 = 크기에 맞게 자동
+      --links N       세로 연결복도 개수. -1 = 자동, 0 = 없음.
+                      (주복도가 2개 이상이면 0 을 줘도 1 로 올린다 — 안 그러면
+                       복도들이 서로 안 이어진다)
       --rooms N       방 개수 목표. 0 = 크기에 맞게 자동.
                       **개수를 정하면 폭을 거기 맞춰 나눈다** (너무 많으면 줄여서 알림)
+      --single-room   칸막이도 복도도 없는 **원룸** 하나를 만든다. 로봇·센서 자체를
+                      시험할 때 쓴다 — 지형이 변수로 끼면 드라이버 문제인지 지도
+                      문제인지 가리기 어렵다. --corridors/--links/--rooms 는 무시된다
       --room-depth M  방 깊이 기준(m). 기본 8 — 주복도 개수를 자동으로 정할 때 쓴다
       --room-min M    방 최소 폭(m). 기본 4
       --corridor M    주복도 폭(m). 기본 3 — UGV 폭 0.72 + Nav2 여유
@@ -146,6 +151,58 @@ def split_widths(total, k, min_w, rng):
     parts = [min_w + int(extra * v / s) for v in w]
     parts[-1] += total - sum(parts)         # 반올림 오차는 마지막이 흡수
     return parts
+
+
+def carve_entrances(grid, cand, n_entrance, rng):
+    """후보 중 n_entrance 개를 골라 외피를 뚫는다.
+
+    한쪽 면에 몰리면 반대편에서 들어올 수 없으니 면을 돌아가며 뽑는다.
+    후보는 (side, 행 선택, 열 선택, 폭칸수) 꼴이고 행/열 중 하나는 slice 다.
+    """
+    by_side = {}
+    for c in cand:
+        by_side.setdefault(c[0], []).append(c)
+    for v in by_side.values():
+        rng.shuffle(v)
+    order, sides = [], sorted(by_side)
+    rng.shuffle(sides)
+    while any(by_side[s] for s in sides):
+        for s in sides:
+            if by_side[s]:
+                order.append(by_side[s].pop())
+
+    out = []
+    for (side, rsel, csel, width) in order[:n_entrance]:
+        grid[rsel, csel] = False
+        if side in ('west', 'east'):
+            out.append((side, (rsel.start + rsel.stop - 1) / 2.0, float(csel), width))
+        else:
+            out.append((side, float(rsel), (csel.start + csel.stop - 1) / 2.0, width))
+    return out
+
+
+def plan_single_room(bh, bw, rng, door_w, cw, n_entrance):
+    """칸막이도 복도도 없는 방 하나짜리 건물 (원룸).
+
+    작전 지형이 아니라 **로봇·센서 자체를 시험할 때** 쓴다. 지형이 변수로 끼면
+    드라이버 문제인지 지도 문제인지 가려내기가 어렵다.
+    """
+    grid = np.zeros((bh, bw), dtype=bool)
+    grid[0, :] = grid[-1, :] = grid[:, 0] = grid[:, -1] = True   # 외피만
+
+    ew = max(door_w, cw)                        # 현관은 방문보다 넓게
+    cand = []
+    for side, col in (('west', 0), ('east', bw - 1)):
+        for f in (0.3, 0.5, 0.7):
+            c = max(1, min(bh - 1 - ew, int(bh * f) - ew // 2))
+            cand.append((side, slice(c, c + ew), col, ew))
+    for side, row in (('south', 0), ('north', bh - 1)):
+        for f in (0.3, 0.5, 0.7):
+            c = max(1, min(bw - 1 - ew, int(bw * f) - ew // 2))
+            cand.append((side, row, slice(c, c + ew), ew))
+
+    entrances = carve_entrances(grid, cand, n_entrance, rng)
+    return grid, [(1, 1, bw - 1, bh - 1)], [], [], entrances
 
 
 def plan_building(bh, bw, rng, n_corr, n_link, target_rooms,
@@ -245,29 +302,7 @@ def plan_building(bh, bw, rng, n_corr, n_link, target_rooms,
         cand.append(('south', 0, slice(a, b), b - a))
         cand.append(('north', bh - 1, slice(a, b), b - a))
 
-    # 한쪽 면에 몰리지 않게 면을 돌아가며 뽑는다
-    by_side = {}
-    for c in cand:
-        by_side.setdefault(c[0], []).append(c)
-    for v in by_side.values():
-        rng.shuffle(v)
-    order, sides = [], sorted(by_side)
-    rng.shuffle(sides)
-    while any(by_side[s] for s in sides):
-        for s in sides:
-            if by_side[s]:
-                order.append(by_side[s].pop())
-
-    entrances = []
-    for (side, rsel, csel, width) in order[:n_entrance]:
-        if side in ('west', 'east'):
-            grid[rsel, csel] = False
-            entrances.append((side, (rsel.start + rsel.stop - 1) / 2.0,
-                              float(csel), width))
-        else:
-            grid[rsel, csel] = False
-            entrances.append((side, float(rsel),
-                              (csel.start + csel.stop - 1) / 2.0, width))
+    entrances = carve_entrances(grid, cand, n_entrance, rng)
 
     # --- ④ 방을 자를 x 구간 (연결복도 사이사이) ---
     segments, x = [], 1
@@ -465,8 +500,9 @@ def main():
     ap.add_argument('--name', default=None)
     ap.add_argument('--cell', type=float, default=0.5)
     ap.add_argument('--corridors', type=int, default=0)
-    ap.add_argument('--links', type=int, default=0)
+    ap.add_argument('--links', type=int, default=-1)
     ap.add_argument('--rooms', type=int, default=0)
+    ap.add_argument('--single-room', action='store_true')
     ap.add_argument('--room-depth', type=float, default=8.0)
     ap.add_argument('--room-min', type=float, default=4.0)
     ap.add_argument('--corridor', type=float, default=3.0)
@@ -508,28 +544,38 @@ def main():
     n_corr = args.corridors or max(1, int(round((bh - 1) / float(strip))))
     asked_corr = n_corr
     n_corr = min(n_corr, max(1, (bh - 1) // (2 * MIN_ROOM_DEPTH + cw + 3)))
-    n_link = args.links or max(1, min(4, int(round(bw * cell / 45.0))))
-    if n_corr > 1:
-        n_link = max(1, n_link)                 # 복도끼리 이어져야 한다
+    # --links 는 0 이 '연결복도 없음' 이라는 뜻이라 자동 표시를 -1 로 둔다.
+    # (or 로 처리하면 0 과 '안 줬다' 를 구분 못 한다)
+    n_link = (max(1, min(4, int(round(bw * cell / 45.0))))
+              if args.links < 0 else args.links)
+    if n_corr > 1 and n_link < 1:
+        print('  ⚠️ 주복도가 2개 이상이면 연결복도가 있어야 서로 이어집니다 '
+              '-> --links 1 로 올립니다')
+        n_link = 1
 
-    # 외부 출입구가 하나도 없으면 바깥 땅이 건물과 끊긴다 — 최소 1개는 낸다
-    n_entrance = args.entrances or max(1, min(4, n_corr))
-    n_entrance = max(1, min(n_entrance, 2 * n_corr + 2 * n_link))
+    if args.single_room:
+        n_entrance = args.entrances or 2
+        plan = plan_single_room(bh, bw, rng, door_w, cw, n_entrance)
+        n_corr = n_link = 0
+    else:
+        # 외부 출입구가 하나도 없으면 바깥 땅이 건물과 끊긴다 — 최소 1개는 낸다
+        n_entrance = args.entrances or max(1, min(4, n_corr))
+        n_entrance = max(1, min(n_entrance, 2 * n_corr + 2 * n_link))
 
-    def build(nc):
-        return plan_building(bh, bw, rng, nc, n_link, args.rooms,
-                             cw, lw, door_w, room_min, n_entrance)
+        def build(nc):
+            return plan_building(bh, bw, rng, nc, n_link, args.rooms,
+                                 cw, lw, door_w, room_min, n_entrance)
 
-    plan = build(n_corr)
-    while plan is None and n_corr > 1:          # 띠가 얇으면 복도를 줄여 다시
-        n_corr -= 1
         plan = build(n_corr)
-    if plan is None:
-        print('  ❌ 이 크기에는 복도 하나도 못 넣습니다. --size 를 키우세요')
-        return 1
-    if n_corr != asked_corr:
-        print(f'  ⚠️ 주복도 {asked_corr}개는 건물 {bh * cell:.0f} m 에 안 들어갑니다 '
-              f'-> {n_corr}개로 줄였습니다')
+        while plan is None and n_corr > 1:      # 띠가 얇으면 복도를 줄여 다시
+            n_corr -= 1
+            plan = build(n_corr)
+        if plan is None:
+            print('  ❌ 이 크기에는 복도 하나도 못 넣습니다. --size 를 키우세요')
+            return 1
+        if n_corr != asked_corr:
+            print(f'  ⚠️ 주복도 {asked_corr}개는 건물 {bh * cell:.0f} m 에 '
+                  f'안 들어갑니다 -> {n_corr}개로 줄였습니다')
     bgrid, rooms, doors, corridors, entrances = plan
 
     # --- 건물을 부지에 앉힌다 ---
