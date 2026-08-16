@@ -35,6 +35,23 @@
 
 이 자동으로 들어간다. 이게 없으면 런타임 소환이 실패한다([8. 트러블슈팅](#8-트러블슈팅)).
 
+### 접촉 설정은 월드가 들고 있다
+
+생성기 3종은 `WorldInfo.contactProperties` 를 `my_world.wbt` 와 같게 넣는다.
+**로봇 PROTO 가 아니라 월드에 있어야 하는 값**이라, 새 월드를 만들 때마다 같이
+가지 않으면 로봇 거동이 조용히 달라진다.
+
+| material | 무엇 | 왜 필요한가 |
+|---|---|---|
+| `InteriorWheelMat` / `ExteriorWheelMat` | SummitXL 메카넘 휠 | 롤러가 45도로 누워 있어 그 방향으로만 미끄러져야 게걸음이 된다. 없으면 등방성 마찰이 걸려 **옆으로 못 가고 앞뒤로만 간다** |
+| `slope` | 경사면 | 마찰 0.5 |
+
+`coulombFriction [0, 2, 0]` + `frictionRotation ±0.785` 가 그 이방성을 만들고,
+`softCFM 0.0001` 은 접촉을 아주 약간 무르게 해 솔버를 안정시킨다.
+
+> 한동안 생성 월드 3종에 이게 통째로 빠져 있었다. `my_world` 에서 튜닝한 주행이
+> 생성 월드에서 다르게 나오면 이걸 먼저 의심한다.
+
 ---
 
 ## 2. OS별 실행 방법 (중요)
@@ -402,12 +419,6 @@ Webots 헤드리스 로드도 확인했다 — 노드 368개로 **오류 없이*
 **확인하지 않은 것:**
 
 - Nav2가 이 지형에서 실제로 경로를 뽑는지 (탐사·주행 시험은 아직)
-- **`WorldInfo.contactProperties` 가 없다.** `my_world.wbt` 는 SummitXL 의 메카넘
-  휠용으로 `InteriorWheelMat` / `ExteriorWheelMat`(이방성 마찰 + `frictionRotation`
-  ±0.785, `softCFM 0.0001`)와 `slope` 를 정의하는데, 생성 월드 3종
-  (`gen_world.py` / `gen_world_random.py` / `gen_world_from_map.py`)은 전부 없다.
-  없으면 메카넘 롤러가 등방성 마찰을 받아 게걸음 거동이 달라진다. 물리 경고와는
-  무관한 것으로 확인됐지만(위 표), 주행 특성은 `my_world` 와 다를 수 있다
 - 드론이 벽 높이 3 m 위로 넘어다닐 때의 거동. 울타리는 2 m 라 드론은 부지 밖으로
   나갈 수 있다
 - 바깥 땅에서 SLAM 이 실제로 잘 도는지 — 물건을 뿌린 건 그 대비지만 측정은 안 했다
