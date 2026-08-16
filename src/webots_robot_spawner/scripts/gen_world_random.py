@@ -669,7 +669,7 @@ def main():
         #     같은 지점에서 접촉점을 두 벌 받아 물리 솔버가 과잉구속된다.
         #   ground 위에 얹는다 — 예전엔 ground 안에 파묻고 윗면을 z=0 으로 맞췄는데,
         #     보이는 두 면이 같은 평면이라 렌더러가 z-fighting 을 일으켰다.
-        #     ground 윗면(z=0)보다 1 mm 띄워 4 mm 두께로 올린다.
+        #     ground 윗면(z=0)에서 1.5 mm 띄운 3 mm 슬래브다 (z 0.0015~0.0045).
         bsize = bw * cell
         parts.append(solid('building_floor', 0, 0, 0.0025, bsize, bsize, 0.003,
                            (0.46, 0.47, 0.50), collide=False))
