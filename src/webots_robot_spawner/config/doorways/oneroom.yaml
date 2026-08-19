@@ -1,0 +1,35 @@
+# oneroom 월드의 방과 출입구 — gen_world_random.py 가 함께 생성했다 (seed 1).
+#
+# 문짝은 없다. 벽이 끊긴 구간이 곧 출입구이고, 좌표는 그 구간의 중앙이다.
+# 좌표계는 Webots 월드 좌표 = 병합 지도(map) 좌표와 같다 (odom_is_world_absolute).
+# 방 사이를 오갈 때 이 점을 경유지로 쓰면 문틀을 긁지 않는다.
+#
+# side 는 방을 기준으로 한 방향이다: west = -x, east = +x, south = -y, north = +y
+
+world: oneroom
+cell: 0.5
+min_door_width: 1.2
+yard: 12.00
+building: [76.00, 76.00]
+
+# 바깥에서 건물로 들어오는 곳. 복도 끝이라 진입 즉시 동선에 붙는다.
+# side 는 건물을 기준으로 한 방향이다.
+entrances:
+  - {x: 0.00, y: -37.75, width: 3.00, side: south}
+  - {x: -37.75, y: -15.50, width: 3.00, side: west}
+
+# 복도 중심선 — 순찰이나 광역 이동 경로를 짤 때 쓴다
+corridors:
+
+rooms:
+  - id: room_0
+    center: [0.00, 0.00]
+    size: [75.00, 75.00]
+    area: 5625.0
+    doorways:
+      - {x: -37.75, y: -15.50, width: 3.00, side: west}
+      - {x: 0.00, y: -37.75, width: 3.00, side: south}
+
+doorways:
+  - {room: room_0, x: -37.75, y: -15.50, width: 3.00, side: west}
+  - {room: room_0, x: 0.00, y: -37.75, width: 3.00, side: south}
