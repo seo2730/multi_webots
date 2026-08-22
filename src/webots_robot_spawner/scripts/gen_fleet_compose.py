@@ -136,7 +136,7 @@ def service_block(robot, plat, cpus):
         f'      - ROBOT_INIT_Y={y:.3f}',
         f'      - ROBOT_INIT_YAW={yaw:.3f}',
         # Webots 노드 쪽 값과 맞춘다. 드론만 동기 — 자세 루프가 매 물리 스텝
-        # 돌지 않으면 뒤집힌다 (drone_setup.md 참고).
+        # 돌지 않으면 뒤집힌다 (08_DRONE_SETUP.md 참고).
         f'      - ROBOT_SYNCHRONIZATION={"true" if needs_sync else "false"}',
     ]
     if rtype == 'drone':
@@ -144,7 +144,7 @@ def service_block(robot, plat, cpus):
         #   2d          고정 고도, Nav2 만
         #   2.5d_local  고도 고정 + 앞이 막히면 넘어감
         #   2.5d        목표마다 층 선택 + 지역 회피 (기본)
-        # 값 목록과 근거는 DRONE_NAV.md, 판정은 single_drone.launch.py 의 NAV_MODES.
+        # 값 목록과 근거는 09_DRONE_NAV.md, 판정은 single_drone.launch.py 의 NAV_MODES.
         lines.append('      - NAV_MODE=2.5d')
     if needs_def:
         # spot_driver 가 Supervisor 로 자기 몸을 DEF 이름으로 찾는다.

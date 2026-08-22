@@ -156,7 +156,7 @@ services:
       - ROS_DOMAIN_ID=30
     # 🌟 [수정] 실행 전에 반드시 환경(setup.bash)을 먼저 로드(source)합니다!
     # 🗺️ RViz2 + 맵 병합(map_merger)을 함께 띄웁니다. 로봇별 SLAM 맵을 world
-    #    프레임 기준으로 합쳐 /map_merged 로 발행합니다. (자세한 내용: MAP_MERGE.md)
+    #    프레임 기준으로 합쳐 /map_merged 로 발행합니다. (자세한 내용: 10_MAP_MERGE.md)
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
                ros2 launch webots_map_merge master.launch.py"

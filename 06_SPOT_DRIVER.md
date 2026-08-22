@@ -1,4 +1,6 @@
-# spot_driver.py 함수 설명서
+# 06. Spot 드라이버 함수 설명서 (spot_driver.py)
+
+> 📖 [책 목차](Readme.md#-목차) · ← [05. Spot 구축](05_SPOT_SETUP.md) · [07. Spot 자율주행](07_SPOT_NAV.md) →
 
 `webots_spot/spot_driver.py`는 Webots의 Spot 로봇을 제어하는 **webots_ros2_driver 플러그인**.
 일반 ROS2 노드가 아니라, Webots가 시뮬레이션 스텝마다 `step()`을 직접 호출해주는 구조
@@ -142,14 +144,14 @@ StepLength = (|v| / SPEED_COEF) ** (1/0.81)      # step_from_speed()
 ##### 케이던스를 올린 뒤 계수를 다시 잡았다
 
 위 표는 **기본 케이던스**에서 잰 것이다. 그 뒤 `swing_period`/`step_velocity`를 노출해
-케이던스를 올리자([SPOT_NAV.md 3장 ⑦](SPOT_NAV.md#-속도를-올리려면-보폭이-아니라-케이던스다))
+케이던스를 올리자([07장 3절 ⑦](07_SPOT_NAV.md#-속도를-올리려면-보폭이-아니라-케이던스다))
 같은 보폭이 더 빠른 속도를 내게 됐다. 그래서 운용점(`swing=0.12`, `stepV=3.0`)에서 한 점
 교정했다.
 
 ##### 시뮬 시각으로 재측정해 확정했다 ✅
 
 위 표들은 전부 **벽시계로 재고 시뮬 속도를 23% 고정으로 가정**한 값이라 최대 4배까지
-틀렸다 ([SPOT_NAV.md 4장](SPOT_NAV.md#-속도를-벽시계로-쟀다)). `odom.header.stamp`
+틀렸다 ([07장 4절](07_SPOT_NAV.md#-속도를-벽시계로-쟀다)). `odom.header.stamp`
 기준으로 다시 재서 확정한 값은 이렇다.
 
 | | 값 | 비고 |
@@ -267,15 +269,15 @@ float_mode 중에는 스킵.
 
 ## 관련 문서
 
-- [Readme 10장](Readme.md#10-spot-사족보행-로봇) — 사용법, 센서 구성, 해결된 이슈
-- [INTERFACES.md](INTERFACES.md) — 자세 제어 서비스 목록과 `cmd_vel` 의미 차이
-- [SPAWNER.md](SPAWNER.md) — Spot만 `DEF` 이름이 필요한 이유 (`getFromDef`)
-- [MAP_MERGE.md](MAP_MERGE.md) — Spot 팔 관절을 0으로 채우는 이유
-- [ugv_setup.md](ugv_setup.md) / [drone_setup.md](drone_setup.md) — 다른 두 로봇
+- [Readme 10절](Readme.md#10-spot-사족보행-로봇) — 사용법, 센서 구성, 해결된 이슈
+- [01_INTERFACES.md](01_INTERFACES.md) — 자세 제어 서비스 목록과 `cmd_vel` 의미 차이
+- [03_SPAWNER.md](03_SPAWNER.md) — Spot만 `DEF` 이름이 필요한 이유 (`getFromDef`)
+- [10_MAP_MERGE.md](10_MAP_MERGE.md) — Spot 팔 관절을 0으로 채우는 이유
+- [04_UGV_SETUP.md](04_UGV_SETUP.md) / [08_DRONE_SETUP.md](08_DRONE_SETUP.md) — 다른 두 로봇
 
 ---
 
-> 📘 튜닝 과정에서 겪은 이슈와 해결은 [SPOT_NAV.md](SPOT_NAV.md)에 따로 정리했다.
+> 📘 튜닝 과정에서 겪은 이슈와 해결은 [07_SPOT_NAV.md](07_SPOT_NAV.md)에 따로 정리했다.
 
 ## 자율주행 직접 테스트하기
 
@@ -356,3 +358,7 @@ ros2 topic pub -1 /spot1/goal_pose geometry_msgs/msg/PoseStamped \
 `synchronization TRUE`라 Webots가 매 스텝 드론 컨트롤러를 기다린다. Spot만 테스트한다고
 다른 로봇을 내릴 때 드론은 반드시 살려 둔다 (`ugv1`도 `/clock` 발행자라 유지).
 증상은 `/spot1/odom`이 0건으로 뚝 끊기는 것이다.
+
+---
+
+← [05. Spot 구축](05_SPOT_SETUP.md) | [📖 책 목차](Readme.md#-목차) | [07. Spot 자율주행](07_SPOT_NAV.md) →

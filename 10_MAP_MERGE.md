@@ -1,9 +1,11 @@
-# 다중 로봇 맵 병합 구축 기록
+# 10. 다중 로봇 맵 병합 구축 기록
+
+> 📖 [책 목차](Readme.md#-목차) · ← [09. 드론 자율비행](09_DRONE_NAV.md) · [11. 데이터 수집](11_DATA_COLLECTION.md) →
 
 로봇마다 따로 만들던 SLAM 맵을 **마스터 관제 컨테이너에서 하나의 전역 맵으로 합치고**,
 새 로봇이 나중에 추가돼도 마스터를 건드리지 않고 자동으로 합류시키기까지의 전 과정 기록.
 
-빠른 사용법은 [8장](#8-사용법)에 있고, 이 문서는 **왜 그렇게 만들었는지**와
+빠른 사용법은 [8절](#8-사용법)에 있고, 이 문서는 **왜 그렇게 만들었는지**와
 **어떻게 검증했는지**를 다룬다.
 
 - 결과 토픽: **`/map_merged`** (`nav_msgs/msg/OccupancyGrid`, frame = `world`)
@@ -63,7 +65,7 @@ fleet_spawner_windows
 
 로봇 쪽에 들어가는 것은 `robot_registrar` 하나뿐이고, 그것마저 없어도
 자동 탐색으로 병합에 참여한다 (지금은 로봇 4종 모두 붙여 뒀다 →
-[10장 ⑦](#-로봇-4종-모두-등록-노드를-띄운다)).
+[10절 ⑦](#-로봇-4종-모두-등록-노드를-띄운다)).
 
 ---
 
@@ -178,7 +180,7 @@ Webots GPS는 월드 절대좌표를 준다. 따라서 **각 로봇의 `odom` �
 |---|---|
 | `multirobot_map_merge` | 특징점 매칭이 불필요. 나중에 **보정용**으로 얹을 여지는 있음 |
 | `map_merge_3d` | 포인트클라우드용. 2D 격자만 다루는 지금은 오버킬 |
-| [Swarm-SLAM / cslam](https://github.com/lajoiepy/cslam) | 로봇 간 loop closure까지 하는 "제대로 된" 방식. 셋업 비용이 큼 → [11장](#11-알려진-한계--다음-작업) |
+| [Swarm-SLAM / cslam](https://github.com/lajoiepy/cslam) | 로봇 간 loop closure까지 하는 "제대로 된" 방식. 셋업 비용이 큼 → [11절](#11-알려진-한계--다음-작업) |
 | `grid_map` (ANYbotics) | 머저가 아니라 다층 격자 라이브러리. 기반으로만 쓸 것 |
 
 ---
@@ -281,7 +283,7 @@ for topic, types in self.get_topic_names_and_types():
 
 `robot_registrar`를 안 붙인 로봇도 **존재가 인지되고 병합에 정상 참여**한다.
 한동안 spot1이 registrar 없이 이 경로만으로 병합됐던 것이 그 증거다. 지금은 4종 모두
-registrar를 붙였지만, 이 안전망은 그대로 남아 있다 → [10장 ⑦](#-로봇-4종-모두-등록-노드를-띄운다).
+registrar를 붙였지만, 이 안전망은 그대로 남아 있다 → [10절 ⑦](#-로봇-4종-모두-등록-노드를-띄운다).
 
 ### 시각 기준은 전부 시뮬 시간
 
@@ -357,7 +359,7 @@ Views 패널에서 **Angled View**를 고르면 3D로 볼 수 있다.
 | `/{ns}/joint_states` | `sensor_msgs/JointState` | 양방향 | 기본 | 마스터가 누락분만 보충 발행 |
 
 > **QoS가 안 맞으면 에러도 경고도 없이 아무것도 안 들어온다.** `Transient Local` 표시된
-> 토픽을 직접 구독·디버깅할 때는 반드시 맞춰야 한다 → [10장 ①](#-map_merged가-아예-안-나온다)
+> 토픽을 직접 구독·디버깅할 때는 반드시 맞춰야 한다 → [10절 ①](#-map_merged가-아예-안-나온다)
 
 ### 프레임
 
@@ -384,7 +386,7 @@ Views 패널에서 **Angled View**를 고르면 3D로 볼 수 있다.
 | `max_merged_cells` | `8000000` | 격자 폭주 방지 안전장치 |
 | `auto_discovery` | `true` | 토픽 그래프 자동 탐색 사용 여부 |
 | `publish_static_tf` | `true` | `world→{ns}/map` static TF 발행 여부 |
-| **`odom_is_world_absolute`** | **`true`** | **가장 중요.** `true`면 앵커가 항등변환 → [2장](#2-정렬-설계--world-앵커-프레임) |
+| **`odom_is_world_absolute`** | **`true`** | **가장 중요.** `true`면 앵커가 항등변환 → [2절](#2-정렬-설계--world-앵커-프레임) |
 | `map_topic_pattern` | `^/([^/]+)/map$` | 자동 탐색 정규식 |
 | `registry_topic` | `/robot_registry` | 등록 토픽 이름 |
 | `robots.{ns}.init_x/y/yaw` | — | 스폰 좌표. `odom_is_world_absolute: false`일 때만 사용 |
@@ -484,7 +486,7 @@ ros2 launch webots_robot_spawner spawner.launch.py fleet:=random_squad.yaml
 
 소환기가 로봇의 뇌를 띄울 때 `ROBOT_ID` / `ROBOT_INIT_*` 환경 변수를 넣어 주므로
 기존 런치 경로를 그대로 타고, 그러면 `robot_registrar`가 돌아
-[5장](#5-로봇을-동적으로-받는-구조)의 ① 경로로 합류한다. 등록 노드가 없더라도
+[5절](#5-로봇을-동적으로-받는-구조)의 ① 경로로 합류한다. 등록 노드가 없더라도
 ③ 자동 탐색과 TF 기반 마커가 받아준다.
 
 즉 **어떻게 태어난 로봇이든 마스터 입장에서는 똑같이 보인다.**
@@ -640,7 +642,7 @@ Webots는 **동기화 모드 extern 컨트롤러가 전부 접속할 때까지 �
   소환기가 뇌 접속을 확인한 뒤 그 로봇만 `synchronization`을 TRUE로 되돌린다.
   그래서 드론의 뇌가 죽으면 시뮬이 멈춘다 (정적으로 놓였던 예전 drone1과 같은 성질).
 
-> 드론 문서 5장 ⑥과 같은 현상이다. 그때는 `/drone1/gps`도 같이 멈춘 것이 단서였고,
+> [08장](08_DRONE_SETUP.md) 5절 ⑥과 같은 현상이다. 그때는 `/drone1/gps`도 같이 멈춘 것이 단서였고,
 > 여기서는 `/clock` 자체가 0 Hz인 것이 단서였다.
 
 ### ②-2 `ros2 topic hz`가 거짓말을 할 때
@@ -664,7 +666,7 @@ FastDDS 세그먼트가 재생성마다 쌓여, 700개를 넘기면
 ### ③ 좌표가 정확히 두 배로 어긋남
 
 스폰 좌표를 앵커로 넣었는데 오도메트리가 이미 월드 절대좌표였다.
-→ `odom_is_world_absolute` 도입. 자세한 내용은 [2장](#2-정렬-설계--world-앵커-프레임).
+→ `odom_is_world_absolute` 도입. 자세한 내용은 [2절](#2-정렬-설계--world-앵커-프레임).
 
 **진단 요령**: 어긋난 거리가 각 로봇의 스폰 좌표와 비슷하면 offset이 두 번 들어간 것이다.
 
@@ -796,7 +798,7 @@ Windows에서 X 서버(VcXsrv 등)가 안 떠 있으면 `rviz2` 프로세스가 
 지금은 넷 다 맵을 만들지만 이 경로는 그대로 둔다 — 다음에 맵 없는 로봇을 붙일 때 쓴다.
 
 > ⚠️ **드론 맵은 다른 로봇 맵과 성격이 다르다.** 비행 고도의 수평 단면이라
-> (`drone_setup.md` 참고) 지상 로봇이 보는 것과 같은 높이의 장애물이 아니다.
+> (`08_DRONE_SETUP.md` 참고) 지상 로봇이 보는 것과 같은 높이의 장애물이 아니다.
 > 예를 들어 허리 높이 선반은 UGV 맵에는 벽으로, 2 m를 나는 드론 맵에는 빈 공간으로 찍힌다.
 > 병합 결과를 볼 때 이 차이를 "정렬 오류"로 오해하지 말 것.
 
@@ -887,10 +889,10 @@ src/webots_map_merge/
 | 파일 | 어디서 도나 | 역할 |
 |---|---|---|
 | [map_merger.py](src/webots_map_merge/webots_map_merge/map_merger.py) | 마스터 1개 | 로봇 발견 → 맵 구독 → `world` 기준 병합 → `/map_merged`, `world→{ns}/map` static TF |
-| [joint_state_filler.py](src/webots_map_merge/webots_map_merge/joint_state_filler.py) | 마스터 1개 | 아무도 발행 안 하는 관절을 0으로 채워 TF 트리 완성 → [10장 ④](#-rviz의-robotmodel이-빨갛게-뜬다) |
+| [joint_state_filler.py](src/webots_map_merge/webots_map_merge/joint_state_filler.py) | 마스터 1개 | 아무도 발행 안 하는 관절을 0으로 채워 TF 트리 완성 → [10절 ④](#-rviz의-robotmodel이-빨갛게-뜬다) |
 | [robot_marker_publisher.py](src/webots_map_merge/webots_map_merge/robot_marker_publisher.py) | 마스터 1개 | TF에서 로봇을 찾아 `/robot_markers` 발행 → **새 로봇 자동 표시** |
 | [robot_registrar.py](src/webots_map_merge/webots_map_merge/robot_registrar.py) | 로봇마다 1개 | 1 Hz로 `/robot_registry`에 ID·초기 위치·맵 유무 알림 |
-| [robots.yaml](src/webots_map_merge/config/robots.yaml) | 마스터 | 파라미터 → [7장](#7-인터페이스-규격) |
+| [robots.yaml](src/webots_map_merge/config/robots.yaml) | 마스터 | 파라미터 → [7절](#7-인터페이스-규격) |
 | [master_merged.rviz](src/webots_map_merge/rviz/master_merged.rviz) | 마스터 | 관제 화면 설정 (표시 이름은 영어로) |
 | [master.launch.py](src/webots_map_merge/launch/master.launch.py) | 마스터 | 위 노드들 + RViz2 |
 | [single_ugv.launch.py](src/webots_python/launch/single_ugv.launch.py) | ugv | `robot_registrar` 포함 |
@@ -906,9 +908,13 @@ src/webots_map_merge/
 ### 관련 문서
 
 - [Readme.md](Readme.md) — 전체 프로젝트 사용법
-- [INTERFACES.md](INTERFACES.md) — 토픽·서비스·프레임·QoS 총람
-- [SPAWNER.md](SPAWNER.md) — 소환된 로봇이 여기 합류하기까지 (몸/뇌 분리, 잔여 몸 정책)
-- [WORLD_GEN.md](WORLD_GEN.md) — 월드 생성 (병합 맵 좌표 = 월드 좌표)
-- [ugv_setup.md](ugv_setup.md) — UGV의 GPS 절대 odom (이 문서 2장의 전제)
-- [drone_setup.md](drone_setup.md) — 드론 구축 기록 (`<extern>` 동기화 함정이 여기와 겹침)
-- [spot_driver_functions.md](spot_driver_functions.md) — Spot 드라이버 함수 정리
+- [01_INTERFACES.md](01_INTERFACES.md) — 토픽·서비스·프레임·QoS 총람
+- [03_SPAWNER.md](03_SPAWNER.md) — 소환된 로봇이 여기 합류하기까지 (몸/뇌 분리, 잔여 몸 정책)
+- [02_WORLD_GEN.md](02_WORLD_GEN.md) — 월드 생성 (병합 맵 좌표 = 월드 좌표)
+- [04_UGV_SETUP.md](04_UGV_SETUP.md) — UGV의 GPS 절대 odom (이 문서 2장의 전제)
+- [08_DRONE_SETUP.md](08_DRONE_SETUP.md) — 드론 구축 기록 (`<extern>` 동기화 함정이 여기와 겹침)
+- [06_SPOT_DRIVER.md](06_SPOT_DRIVER.md) — Spot 드라이버 함수 정리
+
+---
+
+← [09. 드론 자율비행](09_DRONE_NAV.md) | [📖 책 목차](Readme.md#-목차) | [11. 데이터 수집](11_DATA_COLLECTION.md) →

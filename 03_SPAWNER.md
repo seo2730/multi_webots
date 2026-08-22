@@ -1,9 +1,11 @@
-# 로봇 소환 (Runtime Spawn) 구축 기록
+# 03. 로봇 소환 (Runtime Spawn) 구축 기록
+
+> 📖 [책 목차](Readme.md#-목차) · ← [02. 월드 생성](02_WORLD_GEN.md) · [04. UGV 구성](04_UGV_SETUP.md) →
 
 실행 중인 Webots에 로봇을 **월드 편집 없이** 추가하고, 편대 전체를 yaml 한 장으로
 정의하기까지의 전 과정 기록.
 
-빠른 사용법은 [Readme 12장](Readme.md#12-로봇-소환-runtime-spawn)에 있고,
+빠른 사용법은 [Readme 12절](Readme.md#12-로봇-소환-runtime-spawn)에 있고,
 이 문서는 **왜 그렇게 만들었는지**와 **어떤 함정이 있었는지**를 다룬다.
 
 - 담당 패키지: [src/webots_robot_spawner/](src/webots_robot_spawner/) +
@@ -115,7 +117,7 @@ ugv3 (런타임 소환된 몸) ←TCP→ 이 뇌만 fleet 컨테이너가 띄운
 DEF가 없으면 찾을 수단이 없고, 모두 같은 DEF면 2대째가 남의 몸을 잡는다.
 소환기가 `spot2` → `DEF SPOT2`로 이름을 만들고 뇌에 `ROBOT_DEF`로 같은 값을 넘긴다.
 
-**`needs_sync`(드론)** — 4장 참고. 주입은 항상 `synchronization FALSE`로 하고,
+**`needs_sync`(드론)** — 4절 참고. 주입은 항상 `synchronization FALSE`로 하고,
 드론만 뇌 접속 확인 후 TRUE로 되돌린다.
 
 > 씬 트리에서 "이건 우리 로봇이다"라고 알아보는 목록에는 옛 원본 PROTO
@@ -128,7 +130,7 @@ DEF가 없으면 찾을 수단이 없고, 모두 같은 DEF면 2대째가 남의
 
 ```
 ① 이름 채번        씬 트리를 훑어 쓰이지 않는 번호를 고른다 (ugv3, ugv4 ...)
-② 자리 고르기      random 이면 5장의 샘플러, 아니면 요청 좌표 + 겹침 검사
+② 자리 고르기      random 이면 5절의 샘플러, 아니면 요청 좌표 + 겹침 검사
 ③ 몸 주입          importMFNodeFromString — 항상 synchronization FALSE
 ④ 뇌 띄우기        로봇별 컨테이너가 기다리거나, fleet 컨테이너가 프로세스로 띄운다
 ⑤ 롤백 감시        brain_grace_period(8초) 안에 뇌가 죽으면 몸을 씬 트리에서 되돌린다
@@ -169,7 +171,7 @@ despawn 서비스는 만들지 않았다. 대신 **스폰 실패 시 롤백만**
 자리를 고른다. 기준 맵은 **전역 병합 맵 `/map_merged`**다.
 
 병합 맵을 쓸 수 있는 이유는 `world → {ns}/map`이 이 프로젝트에서 항등변환이기 때문이다
-([MAP_MERGE.md 2장](MAP_MERGE.md#2-정렬-설계--world-앵커-프레임)). **병합 맵의 (x, y)가
+([10장 2절](10_MAP_MERGE.md#2-정렬-설계--world-앵커-프레임)). **병합 맵의 (x, y)가
 곧 Webots 월드 좌표**라 좌표 변환 없이 그대로 `translation`에 넣을 수 있다.
 
 | 규칙 | 이유 |
@@ -186,7 +188,7 @@ despawn 서비스는 만들지 않았다. 대신 **스폰 실패 시 롤백만**
 
 > 월드 생성기가 편대 매니페스트에 좌표까지 써 주는 것도 같은 이유다. 생성기는 어디가
 > 비었는지 격자 단위로 알고 있어서, 손으로 고르는 것보다 정확하다
-> ([WORLD_GEN.md](WORLD_GEN.md)).
+> ([02_WORLD_GEN.md](02_WORLD_GEN.md)).
 
 ---
 
@@ -220,13 +222,13 @@ docker run --rm -v "$PWD:/w" -w /w windows-master \
 ```
 
 셸별 문법(`%cd%` / `${PWD}` / `$PWD`)과 이미지 이름은
-[WORLD_GEN.md 2장](WORLD_GEN.md#2-os별-실행-방법-중요)에 표로 정리해 뒀다.
+[02장 2절](02_WORLD_GEN.md#2-os별-실행-방법-중요)에 표로 정리해 뒀다.
 
 `# >>> FLEET GENERATED` 마커 사이만 갈아 끼우므로 `master`/`fleet` 서비스와 주석은 그대로
 남는다. `--check`를 붙이면 고치지 않고 최신인지만 확인한다(CI용).
 
 - 맵 병합·RViz 표시는 손댈 것이 없다. 어떻게 태어난 로봇이든 `robot_registrar`로
-  등록해서 마스터 입장에선 구분되지 않는다 ([MAP_MERGE.md](MAP_MERGE.md) 참고)
+  등록해서 마스터 입장에선 구분되지 않는다 ([10_MAP_MERGE.md](10_MAP_MERGE.md) 참고)
 - 매니페스트는 컨테이너에 **마운트**되어 있어서, 편대만 바꿨다면 재빌드 없이 재시작만
   하면 된다
 
@@ -294,7 +296,7 @@ docker run --rm -v "$PWD:/w" -w /w windows-master \
 
 | 파라미터 | 기본값 | 의미 |
 |---|---|---|
-| `use_sim_time` | **`false`** | 의도된 값. 롤백 감시를 실제 시간으로 재야 한다 (4장) |
+| `use_sim_time` | **`false`** | 의도된 값. 롤백 감시를 실제 시간으로 재야 한다 (4절) |
 | `map_topic` | `/map_merged` | 빈 자리를 고를 때 볼 맵 |
 | `allow_unknown` | `false` | 미탐색(-1) 영역에도 놓을지 |
 | `sample_attempts` | `200` | 무작위 자리 찾기 시도 횟수 |
@@ -302,11 +304,11 @@ docker run --rm -v "$PWD:/w" -w /w windows-master \
 | `brain_grace_period` | `8.0` | 이 시간(초) 안에 뇌가 죽으면 몸을 롤백 |
 | `log_dir` | `/tmp/spawned_robots` | 소환된 로봇별 로그 위치 |
 | `auto_launch_brain` | `true` | `false`면 몸만 넣고 뇌는 안 띄운다 (디버깅용) |
-| `fleet_start_delay` | `20.0` | 매니페스트 처리 전 대기(초). 7장 참고 |
+| `fleet_start_delay` | `20.0` | 매니페스트 처리 전 대기(초). 7절 참고 |
 | `manifest_brains` | `true` | 매니페스트 로봇의 뇌까지 fleet이 띄울지. 로봇별 컨테이너 구조에서는 `false` |
-| `stale_body_policy` | `recreate` | `recreate` \| `adopt` (8장) |
+| `stale_body_policy` | `recreate` | `recreate` \| `adopt` (8절) |
 | `registry_topic` | `/robot_registry` | 생사 판단에 쓰는 등록 토픽 |
-| `ready_file` | `/tmp/fleet_ready` | healthcheck가 보는 파일 (7장) |
+| `ready_file` | `/tmp/fleet_ready` | healthcheck가 보는 파일 (7절) |
 | `fleet_manifest` | (런치 인자) | **여기 적지 않는다.** 런치의 `fleet:=`가 이긴다 |
 
 ### 서비스 요청 필드 (`SpawnRobot.srv`)
@@ -329,7 +331,7 @@ docker run --rm -v "$PWD:/w" -w /w windows-master \
 **`In order to import the PROTO 'X', first it must be declared in the IMPORTABLE EXTERNPROTO list.`**
 월드에 `IMPORTABLE EXTERNPROTO` 선언이 없다. 일반 `EXTERNPROTO`로는 런타임 주입이 안 된다.
 `prepare_world.py --check`로 확인하고, `--in-place`로 고친다
-([WORLD_GEN.md 6장](WORLD_GEN.md#6-외부-월드-가져오기-prepare_worldpy)).
+([02장 6절](02_WORLD_GEN.md#6-외부-월드-가져오기-prepare_worldpy)).
 
 **월드는 열리는데 로봇이 안 나온다.**
 편대 매니페스트 이름과 compose의 `fleet:=` 값이 다른 경우가 대부분이다.
@@ -352,10 +354,10 @@ docker exec fleet_spawner_windows tail -f /tmp/spawned_robots/ugv3.log
 **`ros2 topic hz`를 믿지 말 것.** 로봇이 늘어 노드가 100개를 넘으면 있는 토픽도
 "does not appear to be published yet"으로 나온다(CLI가 매번 새 참여자로 discovery를
 처음부터 함). rclpy로 직접 구독해 확인한다
-([MAP_MERGE.md 10장 ②-2](MAP_MERGE.md#-2-ros2-topic-hz가-거짓말을-할-때)).
+([10장 10절 ②-2](10_MAP_MERGE.md#-2-ros2-topic-hz가-거짓말을-할-때)).
 
 **소환한 드론이 이륙을 못 하고 바닥에서 미끄러진다.** 동기화가 TRUE로 복원되지 않았다.
-뇌 접속을 소환기가 확인하지 못한 것이므로, 그 로봇의 드라이버 로그부터 본다 (4장).
+뇌 접속을 소환기가 확인하지 못한 것이므로, 그 로봇의 드라이버 로그부터 본다 (4절).
 
 **빈 자리를 못 찾는다 (`random: true` 실패).** 순서대로 의심한다 —
 ① `/map_merged`가 나오는가(맵 QoS·마스터 컨테이너), ② `spawn_area`가 실제 자유 공간을
@@ -376,7 +378,7 @@ docker exec fleet_spawner_windows tail -f /tmp/spawned_robots/ugv3.log
 3. **`RobotType` 항목 추가** — `spawn_z`(바닥에 닿는 높이), `footprint_radius`,
    `default_clearance`, 뇌 런치, `has_map`, 필요하면 `needs_def` / `needs_sync`
 4. **뇌 런치 파일** — `os.environ.get('ROBOT_ID')`로 네임스페이스를 받고,
-   `robot_registrar`를 포함시킨다 ([MAP_MERGE.md 10장 ⑦](MAP_MERGE.md#-로봇-4종-모두-등록-노드를-띄운다))
+   `robot_registrar`를 포함시킨다 ([10장 10절 ⑦](10_MAP_MERGE.md#-로봇-4종-모두-등록-노드를-띄운다))
 5. **compose 생성기** — 새 종류가 매니페스트에 들어가면 `gen_fleet_compose.py`가
    서비스를 만들어야 하므로 그쪽 매핑도 확인
 
@@ -393,18 +395,22 @@ src/webots_robot_spawner/
 │   ├── free_space_sampler.py   # /map_merged 에서 빈 자리 고르기
 │   └── brain_launcher.py       # 뇌를 프로세스로 띄우고 거둔다
 ├── config/
-│   ├── spawner.yaml            # 파라미터 (9장)
+│   ├── spawner.yaml            # 파라미터 (9절)
 │   ├── fleet/*.yaml            # 편대 매니페스트
-│   └── doorways/*.yaml         # 생성 월드의 방·출입구 좌표 (WORLD_GEN.md)
+│   └── doorways/*.yaml         # 생성 월드의 방·출입구 좌표 (02_WORLD_GEN.md)
 ├── launch/spawner.launch.py    # fleet:= 인자로 매니페스트 선택
-└── scripts/                    # 월드·compose 생성기 → WORLD_GEN.md
+└── scripts/                    # 월드·compose 생성기 → 02_WORLD_GEN.md
 src/webots_spawner_msgs/srv/SpawnRobot.srv
 ```
 
 ### 관련 문서
 
 - [Readme.md](Readme.md) — 전체 구성과 빠른 사용법
-- [WORLD_GEN.md](WORLD_GEN.md) — 월드를 만들면 편대 매니페스트가 함께 나온다
-- [MAP_MERGE.md](MAP_MERGE.md) — 소환된 로봇이 관제 화면에 합류하는 경로
-- [drone_setup.md](drone_setup.md) — `needs_sync`가 왜 드론에만 필요한지의 근거
-- [INTERFACES.md](INTERFACES.md) — 토픽·서비스·프레임 총람
+- [02_WORLD_GEN.md](02_WORLD_GEN.md) — 월드를 만들면 편대 매니페스트가 함께 나온다
+- [10_MAP_MERGE.md](10_MAP_MERGE.md) — 소환된 로봇이 관제 화면에 합류하는 경로
+- [08_DRONE_SETUP.md](08_DRONE_SETUP.md) — `needs_sync`가 왜 드론에만 필요한지의 근거
+- [01_INTERFACES.md](01_INTERFACES.md) — 토픽·서비스·프레임 총람
+
+---
+
+← [02. 월드 생성](02_WORLD_GEN.md) | [📖 책 목차](Readme.md#-목차) | [04. UGV 구성](04_UGV_SETUP.md) →

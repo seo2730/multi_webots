@@ -1,4 +1,6 @@
-# 월드 생성 (World Generation)
+# 02. 월드 생성 (World Generation)
+
+> 📖 [책 목차](Readme.md#-목차) · ← [01. 인터페이스 총람](01_INTERFACES.md) · [03. 로봇 소환](03_SPAWNER.md) →
 
 로봇이 작전할 **환경**을 만드는 방법을 모았다. 로봇을 그 안에 올리는 이야기는
 [Readme 12. 로봇 소환](Readme.md#12-로봇-소환-runtime-spawn)에 있다.
@@ -143,7 +145,7 @@ MSYS_NO_PATHCONV=1 docker run --rm -v "$PWD:/w" -w /w windows-master python3 \
 나온다(재현 가능).
 
 ```bash
-# 우분투/맥 기준. 다른 셸은 2장 참고
+# 우분투/맥 기준. 다른 셸은 2절 참고
 docker run --rm -v "$PWD:/w" -w /w windows-master python3 \
   src/webots_robot_spawner/scripts/gen_world_random.py --size 100 --seed 3 --name arena_s3
 ```
@@ -571,7 +573,7 @@ docker compose -f docker-configs/mac/docker-compose.yml up -d
 ```
 
 편대가 뜨기까지 30초쯤 걸린다. 느린 게 아니라
-[기동 순서](SPAWNER.md#7-기동-순서-왜-드론만-다른가)를 지키는 중이다.
+[기동 순서](03_SPAWNER.md#7-기동-순서-왜-드론만-다른가)를 지키는 중이다.
 
 **재빌드가 필요한 때 / 아닌 때**
 
@@ -596,7 +598,7 @@ docker compose -f docker-configs/mac/docker-compose.yml up -d
 
 **`docker: Error response from daemon: create $PWD: ... only "[a-zA-Z0-9][a-zA-Z0-9_.-]" are allowed`**
 셸이 `$PWD`를 확장하지 못하고 글자 그대로 넘겼다는 뜻이다. cmd.exe면 `%cd%`,
-PowerShell이면 `${PWD}`. [2장](#2-os별-실행-방법-중요) 참고.
+PowerShell이면 `${PWD}`. [2절](#2-os별-실행-방법-중요) 참고.
 
 **방이 너무 잘거나 너무 크다.** `--rooms`로 개수를 직접 정한다. 크기만 키우면
 방 개수가 늘어난다(같은 폭으로 더 많이 들어가므로). 넓은 방을 원하면
@@ -652,7 +654,11 @@ Nav2·SLAM 까지 붙은 전체 스택이나 GUI 실시간 모드 쪽을 봐야 
 ## 참고
 
 - [Readme.md](Readme.md) — 전체 구성, OS별 실행
-- [SPAWNER.md](SPAWNER.md) — 만든 월드에 편대를 올리는 쪽 (매니페스트·기동 순서)
-- [MAP_MERGE.md](MAP_MERGE.md) — 여러 로봇의 지도를 하나로 합치는 부분
-- [INTERFACES.md](INTERFACES.md) — 토픽·서비스·프레임 총람
-- [ugv_setup.md](ugv_setup.md) / [spot_driver_functions.md](spot_driver_functions.md) / [drone_setup.md](drone_setup.md) — 로봇별 문서
+- [03_SPAWNER.md](03_SPAWNER.md) — 만든 월드에 편대를 올리는 쪽 (매니페스트·기동 순서)
+- [10_MAP_MERGE.md](10_MAP_MERGE.md) — 여러 로봇의 지도를 하나로 합치는 부분
+- [01_INTERFACES.md](01_INTERFACES.md) — 토픽·서비스·프레임 총람
+- [04_UGV_SETUP.md](04_UGV_SETUP.md) / [06_SPOT_DRIVER.md](06_SPOT_DRIVER.md) / [08_DRONE_SETUP.md](08_DRONE_SETUP.md) — 로봇별 문서
+
+---
+
+← [01. 인터페이스 총람](01_INTERFACES.md) | [📖 책 목차](Readme.md#-목차) | [03. 로봇 소환](03_SPAWNER.md) →

@@ -1,4 +1,6 @@
-# UGV(SummitXL Steel) 구성 기록
+# 04. UGV(SummitXL Steel) 구성 기록
+
+> 📖 [책 목차](Readme.md#-목차) · ← [03. 로봇 소환](03_SPAWNER.md) · [05. Spot 구축](05_SPOT_SETUP.md) →
 
 메카넘 바퀴 UGV는 이 프로젝트의 **기준 로봇**이다. Spot과 드론은 "UGV와 무엇이 다른가"로
 설명되고, Nav2·SLAM 설정도 UGV 것을 그대로 재사용한다. 그런데 정작 UGV 자체는 문서가
@@ -72,7 +74,7 @@ ros2 topic pub /ugv1/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.3}}" -r 10
 
 > `linear.y`는 UGV만의 능력이다. 드론도 `linear.y`를 받지만 **기체가 기울어서** 이동하고,
 > Spot은 게걸음(`LateralFraction`)으로 번역된다. 세 로봇의 `cmd_vel`이 같은 타입이면서
-> 의미가 다르다는 점은 [INTERFACES.md](INTERFACES.md)에 한 표로 모아 뒀다.
+> 의미가 다르다는 점은 [01_INTERFACES.md](01_INTERFACES.md)에 한 표로 모아 뒀다.
 
 ---
 
@@ -94,7 +96,7 @@ t.transform.translation.x = float(gps_vals[0])   # Webots 월드 절대 X
 
 이 선택의 파장이 크다 — **각 로봇의 `{ns}/map` 원점이 사실상 Webots 월드 원점**이 되어,
 맵 병합의 `world → {ns}/map`이 항등변환이 된다
-([MAP_MERGE.md 2장](MAP_MERGE.md#2-정렬-설계--world-앵커-프레임)).
+([10장 2절](10_MAP_MERGE.md#2-정렬-설계--world-앵커-프레임)).
 "map 프레임 원점 = 스폰 위치"로 오해해서 좌표가 정확히 두 배로 어긋난 버그가 실제로 났었다.
 
 **시뮬레이션에서는 드리프트가 0이다.** 실제 로봇으로 옮기면 이 성질이 사라지므로
@@ -105,7 +107,7 @@ SLAM 파라미터와 맵 병합 앵커(`odom_is_world_absolute`)를 다시 잡�
 바퀴 모터에서 `getPositionSensor()`로 위치 센서를 직접 얻어 `joint_states`를 발행한다.
 이게 없으면 `robot_state_publisher`가 바퀴 링크의 TF를 못 만들고, **RViz의 RobotModel이
 링크 하나 때문에 통째로 빨간 에러**가 된다
-([MAP_MERGE.md 10장 ④](MAP_MERGE.md#-rviz의-robotmodel이-빨갛게-뜬다)).
+([10장 10절 ④](10_MAP_MERGE.md#-rviz의-robotmodel이-빨갛게-뜬다)).
 
 값이 2000을 넘어가는 것은 연속 회전 관절이라 각도가 누적되기 때문이며, TF 계산은 각도를
 그대로 쓰므로 문제없다.
@@ -243,11 +245,11 @@ if self.namespace == 'ugv1' or self.namespace == '':
 **③ 새 센서 처리 노드에는 `use_sim_time: True`를 반드시 넣는다.**
 빠뜨리면 벽시계 스탬프가 찍혀 tf2가 "아득한 미래의 데이터"로 취급하고, 이후 정상
 데이터까지 `TF_OLD_DATA`로 거부한다
-([MAP_MERGE.md 10장 ⑤](MAP_MERGE.md#-로봇-노드는-반드시-use_sim_time-true로-띄울-것)).
+([10장 10절 ⑤](10_MAP_MERGE.md#-로봇-노드는-반드시-use_sim_time-true로-띄울-것)).
 
 **④ 드라이버의 `synchronization`은 몸의 필드와 값이 같아야 한다.**
 소환된 로봇은 `synchronization FALSE`로 주입되므로 소환기가 `ROBOT_SYNCHRONIZATION=false`를
-넣어 준다 ([SPAWNER.md 4장](SPAWNER.md#4-소환-한-번에-일어나는-일)).
+넣어 준다 ([03장 4절](03_SPAWNER.md#4-소환-한-번에-일어나는-일)).
 
 **⑤ `odom` 토픽의 twist는 비어 있다.** 드라이버가 pose만 채운다. 속도가 필요하면
 `cmd_vel`을 쓰거나 pose를 미분해야 한다.
@@ -262,7 +264,7 @@ if self.namespace == 'ugv1' or self.namespace == '':
   실제 로봇으로 옮길 때 가장 먼저 깨질 가정이다
 - **footprint를 세 로봇이 공유한다.** Spot(다리 벌림)과 드론(비행)에는 맞지 않는다
 - **rgb_camera는 데이터 수집 경로에서만 쓴다.** 주행·SLAM은 라이다만 본다
-  ([DATA_COLLECTION.md](DATA_COLLECTION.md))
+  ([11_DATA_COLLECTION.md](11_DATA_COLLECTION.md))
 - **`explore_lite` 자율 탐사는 미착수.** 서브모듈에 코드는 들어와 있다
   (`src/Webots-SummitXL/workspace/explore/`)
 
@@ -286,6 +288,10 @@ if self.namespace == 'ugv1' or self.namespace == '':
 ### 관련 문서
 
 - [Readme.md](Readme.md) — 실행 방법, 좌표계 규약
-- [INTERFACES.md](INTERFACES.md) — 세 로봇의 토픽·서비스 총람
-- [MAP_MERGE.md](MAP_MERGE.md) — UGV 맵이 전역 맵에 합류하는 경로
-- [spot_driver_functions.md](spot_driver_functions.md) / [drone_setup.md](drone_setup.md) — 다른 두 로봇
+- [01_INTERFACES.md](01_INTERFACES.md) — 세 로봇의 토픽·서비스 총람
+- [10_MAP_MERGE.md](10_MAP_MERGE.md) — UGV 맵이 전역 맵에 합류하는 경로
+- [06_SPOT_DRIVER.md](06_SPOT_DRIVER.md) / [08_DRONE_SETUP.md](08_DRONE_SETUP.md) — 다른 두 로봇
+
+---
+
+← [03. 로봇 소환](03_SPAWNER.md) | [📖 책 목차](Readme.md#-목차) | [05. Spot 구축](05_SPOT_SETUP.md) →

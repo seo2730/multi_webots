@@ -10,7 +10,7 @@
 `odom_is_world_absolute: true`로 같은 가정 위에 서 있으므로 새 가정을 들이는 것도 아니다.
 
   대가: 루프 클로저와 드리프트 보정이 없다. 실기 이식 때는 3D SLAM이 필요하다.
-        (시뮬 한정 단순화 — MAP_MERGE.md의 같은 항목과 짝을 이룬다)
+        (시뮬 한정 단순화 — 10_MAP_MERGE.md의 같은 항목과 짝을 이룬다)
 
 이득은 군집에서 나온다. 드론 1대당 노드가 2개에서 1개로 줄고, 무거운 스캔매칭이
 사라진다. 계획 비용은 **지금과 완전히 같은 2D A***로 유지된다 — 3D 플래너를 쓰지
@@ -178,7 +178,7 @@ class DroneLayerMapper(Node):
 
         TF 조회 대신 odom을 직접 쓴다. 드라이버가 GPS 절대좌표를 그대로 발행하므로
         odom이 곧 월드 자세이고, 회전은 yaw 하나면 된다 (호버 중 roll/pitch는 2° 안쪽 —
-        drone_setup.md의 실측 참고). tf2 조회를 매 클라우드마다 하는 비용이 사라진다.
+        08_DRONE_SETUP.md의 실측 참고). tf2 조회를 매 클라우드마다 하는 비용이 사라진다.
         """
         x, y, z, yaw = self.pose
         c, s = math.cos(yaw), math.sin(yaw)

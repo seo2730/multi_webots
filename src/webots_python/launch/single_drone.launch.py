@@ -23,7 +23,7 @@ Nav2는 linear.x / angular.z 만 쓰고, 드라이버는 linear.z 가 0이면 �
 실측: 4 m 목표 3회 SUCCEEDED, 최종 오차 0.13~0.20 m, 고도는 2.00 m 고정 유지.
 
 ⚠️ **1 m 이내는 라이다가 못 본다**(minRange). 발밑은 하향 뎁스센서가 메우지만
-   수평 근접은 여전히 사각이다 (drone_setup.md 6장).
+   수평 근접은 여전히 사각이다 (08_DRONE_SETUP.md 6장).
 """
 
 import os
@@ -50,7 +50,7 @@ LAYER_HEIGHTS = [1.0, 2.0, 3.0]
 #
 # 🚨 `3d`(연속 3D 경로계획)는 **구현돼 있지 않다.** 이름만 받아 주고 조용히 2.5d 처럼
 #    돌면 나중에 "3d 로 돌렸는데 왜 고도가 계획 안 되지" 로 헤매게 되므로,
-#    명시적으로 거부한다. 왜 안 만들었는지는 DRONE_NAV.md 3장에 있다.
+#    명시적으로 거부한다. 왜 안 만들었는지는 09_DRONE_NAV.md 3장에 있다.
 NAV_MODES = {
     #            (전역 층 선택, 지역 회피)
     '2d':          (False, False),   # 고정 고도. Nav2 만 — 지상 로봇과 같은 동작
@@ -73,7 +73,7 @@ def generate_launch_description():
         raise RuntimeError(
             "NAV_MODE=3d 는 아직 구현되지 않았습니다. 연속 3D 경로계획은 계획 호출마다 "
             "3D 탐색을 해서 군집에서 비용이 대수만큼 곱해지기 때문에 넣지 않았습니다 "
-            "(근거: DRONE_NAV.md 3장). 지금 쓸 수 있는 값: "
+            "(근거: 09_DRONE_NAV.md 3장). 지금 쓸 수 있는 값: "
             f"{', '.join(NAV_MODES)}")
     if nav_mode not in NAV_MODES:
         raise RuntimeError(

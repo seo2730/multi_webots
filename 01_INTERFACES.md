@@ -1,4 +1,6 @@
-# 인터페이스 총람 (Topics · Services · Frames)
+# 01. 인터페이스 총람 (Topics · Services · Frames)
+
+> 📖 [책 목차](Readme.md#-목차) · ← [00. 빠른 시작](00_QUICKSTART.md) · [02. 월드 생성](02_WORLD_GEN.md) →
 
 "이 시스템에 무엇을 보내면 무엇이 나오는가"를 한 장에 모은 색인.
 새로 합류한 사람과 **웹/외부 연동 개발자**가 제일 먼저 볼 문서다.
@@ -31,23 +33,27 @@
 | `linear.y` | 좌우 **평행이동** (m/s) | 게걸음 방향 비율 | 좌우 속도 (기체가 **기울어서** 이동) |
 | `linear.z` | — | — | **상승 속도** (m/s, 목표 고도를 적분) |
 | `angular.z` | 선회 각속도 (rad/s) | 제자리 회전 속도 | 선회 각속도 (rad/s) |
-| 권장 범위 | Nav2 기준 ±0.5 | **약 0.15~0.58 m/s, ±0.26 rad/s** (그 위는 클램프, 그 아래는 하한으로 올라감) | ±1~2 |
-| 자세히 | [ugv_setup.md 2장](ugv_setup.md#2-cmd_vel--메카넘-역기구학) | [Readme 10-4](Readme.md#10-4-cmd_vel-사용법-ugv와-다름-주의) | [drone_setup.md 3장](drone_setup.md#3-인터페이스-규격) |
+| 권장 범위 | Nav2 기준 ±0.5 | **0.045~0.195 m/s, ±0.247 rad/s** (그 위는 클램프, 그 아래는 하한으로 올라감) | ±1~2 |
+| 자세히 | [04장 2절](04_UGV_SETUP.md#2-cmd_vel--메카넘-역기구학) | [06장](06_SPOT_DRIVER.md#cmd_vel-단위) · [07장](07_SPOT_NAV.md) | [08장 3절](08_DRONE_SETUP.md#3-인터페이스-규격) |
 
 > 🔄 **2026-08-16 변경.** Spot 의 `linear.x`/`angular.z` 는 예전에 **보폭 배율**이었다
 > (`StepLength = 0.15 * linear.x`). 지금은 **m/s · rad/s** 다. 옛 값을 그대로 쓰면
-> 약 1.3 배 빨라진다 → [spot_driver_functions.md](spot_driver_functions.md#cmd_vel-단위)
+> 약 1.3 배 빨라진다 → [06_SPOT_DRIVER.md](06_SPOT_DRIVER.md#cmd_vel-단위)
 >
-> ⚠️ Spot 은 **최저 속도 아래를 못 낸다** (보폭 하한 — 현재 운용점에서 약 0.149 m/s).
-> 그보다 작은 명령도 그 속도로 나간다. 상·하한의 **절대값은 재측정 대기 중**이고
-> 케이던스(`swing_period`/`step_velocity`)를 바꾸면 함께 움직인다 → [SPOT_NAV.md](SPOT_NAV.md)
+> ⚠️ Spot 은 **최저 속도 아래를 못 낸다** (보폭 하한 — 현재 운용점에서 약 0.045 m/s).
+> 그보다 작은 명령도 그 속도로 나간다. 위 값들은 **시뮬 시각(`odom.header.stamp`) 기준
+> 실측 확정치**이고, 케이던스(`swing_period`/`step_velocity`)를 바꾸면 함께 움직인다
+> → [07_SPOT_NAV.md](07_SPOT_NAV.md)
+>
+> 🚨 **Nav2 운용점은 0.15 m/s 다.** 최고속 0.195 는 직진에서 잰 값이라 그대로 쓰면
+> 회전 여유가 0 이 되어 간헐적으로 넘어진다.
 
 ### 목표점 (자율주행)
 
 | 토픽 | 타입 | 비고 |
 |---|---|---|
 | `/{ns}/goal_pose` | `geometry_msgs/msg/PoseStamped` | Nav2 표준 입력. **`frame_id`는 `{ns}/map`** |
-| `/{ns}/goal_pose_3d` | `geometry_msgs/msg/PoseStamped` | **드론 전용.** 층을 골라 고도를 맞춘 뒤 `goal_pose`로 넘긴다 → [DRONE_NAV.md](DRONE_NAV.md) |
+| `/{ns}/goal_pose_3d` | `geometry_msgs/msg/PoseStamped` | **드론 전용.** 층을 골라 고도를 맞춘 뒤 `goal_pose`로 넘긴다 → [09_DRONE_NAV.md](09_DRONE_NAV.md) |
 | `/{ns}/cruise_altitude` | `std_msgs/msg/Float64` | **드론 전용.** 순항 고도 지시 |
 | `/web/goal_point` | `geometry_msgs/msg/PointStamped` | 웹 클릭용. `frame_id`가 정확히 `{ns}/map`인 것만 그 로봇의 `goal_pose`로 중계된다 (다른 값은 무시) |
 
@@ -58,7 +64,7 @@ ros2 topic pub -1 /ugv1/goal_pose geometry_msgs/msg/PoseStamped \
 
 > **좌표 값은 로봇끼리 호환되지만 프레임 이름은 아니다.** 이 프로젝트에서는 모든
 > `{ns}/map` 원점이 사실상 Webots 월드 원점이라 숫자는 그대로 통하지만, `frame_id`는
-> 로봇마다 달라서 정확히 채워야 한다 ([Readme 7장](Readme.md#7-로봇-위치-및-맵-데이터)).
+> 로봇마다 달라서 정확히 채워야 한다 ([Readme 7절](Readme.md#7-로봇-위치-및-맵-데이터)).
 
 ### 전문가용 입력
 
@@ -97,7 +103,7 @@ ros2 topic pub -1 /ugv1/goal_pose geometry_msgs/msg/PoseStamped \
 
 | 토픽 | 타입 | 발행 주체 | 내용 |
 |---|---|---|---|
-| `/clock` | `rosgraph_msgs/msg/Clock` | **`ugv1` 드라이버** | 시뮬레이션 시각. ⚠️ [ugv_setup.md 7장](ugv_setup.md#7-알아-둘-함정) |
+| `/clock` | `rosgraph_msgs/msg/Clock` | **`ugv1` 드라이버** | 시뮬레이션 시각. ⚠️ [04장 7절](04_UGV_SETUP.md#7-알아-둘-함정) |
 | `/map_merged` | `nav_msgs/msg/OccupancyGrid` | master (`map_merger`) | 전역 병합 맵, frame = `world` |
 | `/robot_markers` | `visualization_msgs/msg/MarkerArray` | master | 로봇별 화살표 + 이름표 |
 | `/robot_registry` | `std_msgs/msg/String` (JSON) | 로봇마다 (`robot_registrar`) | 명함 + 1 Hz 하트비트 |
@@ -111,7 +117,7 @@ ros2 topic pub -1 /ugv1/goal_pose geometry_msgs/msg/PoseStamped \
 ```
 
 > `/map_merged`는 **관제·시각화·웹 전용**이다. 각 로봇 Nav2에 되먹이면 프레임 순환과
-> 코스트맵 진동이 생긴다 ([MAP_MERGE.md 10장 ⑩](MAP_MERGE.md#-병합-맵을-nav2에-되먹이지-말-것)).
+> 코스트맵 진동이 생긴다 ([10장 10절 ⑩](10_MAP_MERGE.md#-병합-맵을-nav2에-되먹이지-말-것)).
 
 ---
 
@@ -127,7 +133,7 @@ ros2 topic pub -1 /ugv1/goal_pose geometry_msgs/msg/PoseStamped \
 ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'ugv', random: true}"
 ```
 
-필드별 의미와 실패 사유는 [SPAWNER.md 9장](SPAWNER.md#9-파라미터-표).
+필드별 의미와 실패 사유는 [03장 9절](03_SPAWNER.md#9-파라미터-표).
 
 ### Spot 자세 제어
 
@@ -146,7 +152,7 @@ ros2 service call /spot1/stand_up webots_spot_msgs/srv/SpotMotion "{override: tr
 
 `{override: true}`가 없으면 이전 모션 재생 중에는 거부된다.
 `blocksworld_pose`는 MASKOR 원본의 잔재이므로 호출하지 않는다
-([spot_driver_functions.md](spot_driver_functions.md)).
+([06_SPOT_DRIVER.md](06_SPOT_DRIVER.md)).
 
 Nav2 액션(`/{ns}/navigate_to_pose` 등)은 표준 그대로다. 파라미터는 로봇마다 다르다.
 
@@ -158,7 +164,7 @@ Nav2 액션(`/{ns}/navigate_to_pose` 등)은 표준 그대로다. 파라미터�
 > ⚠️ 드론도 여기에 포함되지만, **플래너는 2D 그대로다.** 목표의 `position.z`는
 > 무시된다. 다만 드론에는 그 위에 층 선택기가 얹혀 있어서, `/{ns}/goal_pose_3d`
 > 로 주면 **어느 고도로 갈지 골라 준 뒤** Nav2 에 넘긴다 (연속 3D 경로는 아니고
-> 이산 층 선택이다) → [drone_setup.md 7장](drone_setup.md).
+> 이산 층 선택이다) → [08장 7절](08_DRONE_SETUP.md).
 
 ---
 
@@ -182,10 +188,10 @@ world                       ← 공통 기준 (map_merger가 static TF로 못 �
 
 > 드론의 `map → odom` 이 static 인 이유: odom 이 이미 월드 절대좌표라 보정할 드리프트가
 > 없다. `map_merger` 가 `world → {ns}/map` 을 항등으로 두는 것과 같은 근거다
-> (`odom_is_world_absolute`). → [drone_setup.md 7장](drone_setup.md)
+> (`odom_is_world_absolute`). → [08장 7절](08_DRONE_SETUP.md)
 
 > 맵이 없는 로봇(`has_map: false`)은 `{ns}/map` 대신 `{ns}/odom`을 `world`에 매단다.
-> 드론이 라이다를 달기 전까지 그랬다 → [MAP_MERGE.md 10장 ⑨](MAP_MERGE.md).
+> 드론이 라이다를 달기 전까지 그랬다 → [10장 10절 ⑨](10_MAP_MERGE.md).
 
 | 프레임 | 부모 | 발행 주체 |
 |---|---|---|
@@ -215,7 +221,7 @@ ros2 topic echo /ugv1/map --qos-durability transient_local --qos-reliability rel
 
 > **`ros2 topic hz`를 믿지 말 것.** 노드가 100개를 넘으면 있는 토픽도 "does not appear to
 > be published yet"으로 나온다. rclpy로 직접 구독해 세는 쪽이 정확하다
-> ([MAP_MERGE.md 10장 ②-2](MAP_MERGE.md#-2-ros2-topic-hz가-거짓말을-할-때)).
+> ([10장 10절 ②-2](10_MAP_MERGE.md#-2-ros2-topic-hz가-거짓말을-할-때)).
 
 ---
 
@@ -227,7 +233,7 @@ ros2 topic echo /ugv1/map --qos-durability transient_local --qos-reliability rel
 | `ROBOT_INIT_X` / `_Y` / `_YAW` | `robot_registrar` | 스폰 좌표(맵 병합 명함용). 현재 기본 설정에서는 값이 쓰이지 않는다 |
 | `ROBOT_SYNCHRONIZATION` | 드라이버 | 몸의 `synchronization` 필드와 **같아야** 한다. 소환기가 넣어 준다 |
 | `ROBOT_DEF` | Spot 드라이버 | 씬 트리의 DEF 이름 (`spot2` → `SPOT2`) |
-| **`NAV_MODE`** | **드론 런치** | 경로계획 모드 — `2d` / `2.5d_local` / `2.5d`(기본). 모르는 값이나 `3d`를 주면 런치가 **에러를 내고 멈춘다** → [DRONE_NAV.md 0장](DRONE_NAV.md#0-경로계획-모드-고르기) |
+| **`NAV_MODE`** | **드론 런치** | 경로계획 모드 — `2d` / `2.5d_local` / `2.5d`(기본). 모르는 값이나 `3d`를 주면 런치가 **에러를 내고 멈춘다** → [09장 0절](09_DRONE_NAV.md#0-경로계획-모드-고르기) |
 | `WEBOTS_HOST` / `WEBOTS_PORT` | 드라이버 | 기본 `host.docker.internal:1234` |
 | `ROS_DOMAIN_ID` | 전부 | **30** |
 | `RMW_IMPLEMENTATION` | 전부 | `rmw_fastrtps_cpp` |
@@ -247,10 +253,10 @@ ros2 topic echo /ugv1/map --qos-durability transient_local --qos-reliability rel
 
 | 설정 파일 | 다루는 것 |
 |---|---|
-| [webots_map_merge/config/robots.yaml](src/webots_map_merge/config/robots.yaml) | 병합 파라미터 → [MAP_MERGE.md 7장](MAP_MERGE.md#7-인터페이스-규격) |
-| [webots_robot_spawner/config/spawner.yaml](src/webots_robot_spawner/config/spawner.yaml) | 소환 파라미터 → [SPAWNER.md 9장](SPAWNER.md#9-파라미터-표) |
+| [webots_map_merge/config/robots.yaml](src/webots_map_merge/config/robots.yaml) | 병합 파라미터 → [10장 7절](10_MAP_MERGE.md#7-인터페이스-규격) |
+| [webots_robot_spawner/config/spawner.yaml](src/webots_robot_spawner/config/spawner.yaml) | 소환 파라미터 → [03장 9절](03_SPAWNER.md#9-파라미터-표) |
 | [webots_robot_spawner/config/fleet/](src/webots_robot_spawner/config/fleet/) | 편대 매니페스트 |
-| [webots_robot_spawner/config/doorways/](src/webots_robot_spawner/config/doorways/) | 생성 월드의 방·출입구 좌표 → [WORLD_GEN.md 3-3](WORLD_GEN.md#3-3-출입구-yaml) |
+| [webots_robot_spawner/config/doorways/](src/webots_robot_spawner/config/doorways/) | 생성 월드의 방·출입구 좌표 → [02_WORLD_GEN.md 3-3](02_WORLD_GEN.md#3-3-출입구-yaml) |
 | [webots_python/config/mapper_params_online_async.yaml](src/webots_python/config/mapper_params_online_async.yaml) | slam_toolbox |
 | `src/Webots-SummitXL/workspace/navigation/param/nav2.yaml` | Nav2 (세 로봇 공유) |
 | `docker-configs/*/docker-compose.yml` | 서비스 구성 (매니페스트에서 생성) |
@@ -258,5 +264,9 @@ ros2 topic echo /ugv1/map --qos-durability transient_local --qos-reliability rel
 ### 관련 문서
 
 - [Readme.md](Readme.md) — 설치·실행·전체 그림
-- [SPAWNER.md](SPAWNER.md) · [MAP_MERGE.md](MAP_MERGE.md) · [WORLD_GEN.md](WORLD_GEN.md)
-- [ugv_setup.md](ugv_setup.md) · [spot_driver_functions.md](spot_driver_functions.md) · [drone_setup.md](drone_setup.md)
+- [03_SPAWNER.md](03_SPAWNER.md) · [10_MAP_MERGE.md](10_MAP_MERGE.md) · [02_WORLD_GEN.md](02_WORLD_GEN.md)
+- [04_UGV_SETUP.md](04_UGV_SETUP.md) · [06_SPOT_DRIVER.md](06_SPOT_DRIVER.md) · [08_DRONE_SETUP.md](08_DRONE_SETUP.md)
+
+---
+
+← [00. 빠른 시작](00_QUICKSTART.md) | [📖 책 목차](Readme.md#-목차) | [02. 월드 생성](02_WORLD_GEN.md) →

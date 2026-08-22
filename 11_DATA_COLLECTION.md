@@ -1,4 +1,6 @@
-# 카메라-라이다 데이터 수집 (KITTI 변환)
+# 11. 카메라-라이다 데이터 수집 (KITTI 변환)
+
+> 📖 [책 목차](Readme.md#-목차) · ← [10. 맵 병합](10_MAP_MERGE.md)
 
 Webots 시뮬레이션에서 **카메라 이미지 + 라이다 포인트클라우드 + 3D 라벨**을 뽑아
 KITTI 포맷 데이터셋으로 만드는 경로. 3D 객체 검출 모델(SparseLIF 계열) 학습용으로
@@ -8,7 +10,7 @@ KITTI 포맷 데이터셋으로 만드는 경로. 3D 객체 검출 모델(Sparse
 
 > ⚠️ 이 경로는 **로봇 소환·편대 구조가 들어오기 전에 만들어졌다.** 현재 편대
 > (`ugv1`/`ugv2`/...)와 별개로 도는 흐름이고, 아직 그쪽에 맞춰 정리되지 않은 부분이
-> 남아 있다([5장](#5-현재-구조와-어긋난-부분)). 쓰기 전에 그 장을 먼저 읽는 게 좋다.
+> 남아 있다([5절](#5-현재-구조와-어긋난-부분)). 쓰기 전에 그 장을 먼저 읽는 게 좋다.
 
 ## 목차
 - [1. 무엇이 나오나](#1-무엇이-나오나)
@@ -145,7 +147,7 @@ ros2 launch webots_data_collection cam_lidar_data_collector.launch.py use_clock_
 (+ 선택적으로 `sim_clock_bridge`). **SLAM·Nav2는 띄우지 않는다** — 수집에는 필요 없다.
 
 로봇을 움직여야 프레임이 다양해지므로 텔레옵을 같이 쓴다
-([ugv_setup.md 6장](ugv_setup.md#6-키보드-조종)).
+([04장 6절](04_UGV_SETUP.md#6-키보드-조종)).
 
 변환은 컨테이너 밖에서:
 
@@ -169,7 +171,7 @@ python3 scripts/webots2kitti.py
 | 저장 경로 | `/ros2_ws/src/webots_data_collection/dataset_output` **하드코딩** | 컨테이너 밖 경로로 바꾸려면 코드 수정 필요. 소스를 마운트해 쓰므로 호스트에 그대로 쌓인다 |
 | 로봇 배치 | 월드에 로봇이 박혀 있던 시절 전제 | 지금은 소환기가 넣으므로, 수집용으로도 편대를 먼저 올려야 한다 |
 | OS | 맥 이미지 재사용 | 윈도우/우분투용 compose는 없다. 만들려면 해당 Dockerfile로 같은 서비스를 복제 |
-| `use_sim_time` | 수집 노드는 `true` | `/clock`이 안 돌면 동기화가 성립하지 않아 **한 프레임도 안 쌓인다** ([ugv_setup.md 7장](ugv_setup.md#7-알아-둘-함정)) |
+| `use_sim_time` | 수집 노드는 `true` | `/clock`이 안 돌면 동기화가 성립하지 않아 **한 프레임도 안 쌓인다** ([04장 7절](04_UGV_SETUP.md#7-알아-둘-함정)) |
 
 ---
 
@@ -205,6 +207,10 @@ python3 scripts/webots2kitti.py
 
 ### 관련 문서
 
-- [ugv_setup.md](ugv_setup.md) — 센서 사슬과 `/clock` 함정
+- [04_UGV_SETUP.md](04_UGV_SETUP.md) — 센서 사슬과 `/clock` 함정
 - [Readme.md](Readme.md) — 전체 실행 방법
-- [INTERFACES.md](INTERFACES.md) — 토픽 총람
+- [01_INTERFACES.md](01_INTERFACES.md) — 토픽 총람
+
+---
+
+← [10. 맵 병합](10_MAP_MERGE.md) | [📖 책 목차](Readme.md#-목차)

@@ -1,9 +1,11 @@
-# 드론(Mavic2ProMedium) 구축 기록
+# 08. 드론(Mavic2ProMedium) 구축 기록
+
+> 📖 [책 목차](Readme.md#-목차) · ← [07. Spot 자율주행](07_SPOT_NAV.md) · [09. 드론 자율비행](09_DRONE_NAV.md) →
 
 DJI Mavic 2 Pro를 중형급(6.35kg)으로 개조해 월드에 넣고, UGV·Spot과 동일한
 **`<extern>` 컨트롤러 + ROS 2 드라이버** 구조로 붙이기까지의 전 과정 기록.
 
-빠른 사용법은 [Readme 11장](Readme.md#11-drone-중형급-쿼드콥터)에 있고,
+빠른 사용법은 [Readme 11절](Readme.md#11-drone-중형급-쿼드콥터)에 있고,
 이 문서는 **왜 그렇게 만들었는지**와 **어떻게 검증했는지**를 다룬다.
 
 ---
@@ -31,7 +33,7 @@ Mavic2ProMediumSensorized {  (매니페스트로 소환)  drone1_brain_windows
                                             /drone1/Velodyne_VLP_16/point_cloud
                                             /drone1/down_depth/point_cloud
                                                        │
-                                            drone_layer_mapper  (7장)
+                                            drone_layer_mapper  (7절)
                                             ├─▶ /drone1/map         층 합집합 ─▶ 맵 병합기
                                             ├─▶ /drone1/map_active  현재 층   ─▶ Nav2
                                             └─▶ /drone1/map_layer_k          ─▶ altitude_selector
@@ -94,7 +96,7 @@ UGV·Spot과 같은 방식 — 센서를 품은 래퍼 PROTO — 로 VLP-16을 �
   뎁스는 Spot처럼 시야를 채우려면 5개 + `multi_scan_merger`가 필요해 로봇당 노드가 6개 는다.
 - 라이다 1개로 360°. 뎁스는 하나당 FOV가 90° 남짓이라 제자리 요잉이 잦은 드론에 불리하다.
 
-> 이후 7장(고도 회피)에서 이 파이프라인은 `drone_layer_mapper` 한 노드로 대체됐다.
+> 이후 7절(고도 회피)에서 이 파이프라인은 `drone_layer_mapper` 한 노드로 대체됐다.
 > 라이다를 고른 판단은 그대로 유효하다 — 360°와 노드 수 이점이 더 커졌다.
 
 **하향 뎁스센서 (나중에 추가)**
@@ -119,10 +121,10 @@ UGV·Spot과 같은 방식 — 센서를 품은 래퍼 PROTO — 로 VLP-16을 �
 **왜 질량을 주지 않았나**
 
 VLP-16 실물은 0.83 kg이고 본체 `Physics.mass`는 2.8 kg이다. 켜면 +30%인데,
-추력은 `ω²`에 비례하므로 호버 각속도는 `√m`으로 움직인다 — 아래 3장에서 맞춰 놓은
+추력은 `ω²`에 비례하므로 호버 각속도는 `√m`으로 움직인다 — 아래 3절에서 맞춰 놓은
 `K_VERTICAL_THRUST`(68.5)부터 다시 잡아야 하고, `centerOfMass`도 올라가 자세 게인까지
 흔들린다. 매핑용 센서를 다는 것이 목적이라 기본은 무게 없는 센서로 뒀다.
-탑재 중량 영향까지 보려면 `lidarPhysics TRUE`로 켜고 아래 4장의 헤드리스 하네스로
+탑재 중량 영향까지 보려면 `lidarPhysics TRUE`로 켜고 아래 4절의 헤드리스 하네스로
 호버 추력을 다시 재면 된다.
 
 **장착 높이 0.12 m의 근거 (헤드리스 검증)**
@@ -369,7 +371,7 @@ Webots R2025a는 메시·텍스처 에셋을 설치본에 포함하지 않는다
 ### ④ 속도 / 선회 정상상태 오차
 
 P 제어의 droop. 1.0 m/s → 0.59 m/s, 0.5 rad/s → 0.185 rad/s.
-→ 속도는 적분항, 선회는 방위 적분 방식으로 해결 (2장 참고).
+→ 속도는 적분항, 선회는 방위 적분 방식으로 해결 (2절 참고).
 
 ### ⑤ Webots GUI 저장 시 컨트롤러가 `"<none>"`으로 바뀜
 
@@ -404,11 +406,11 @@ Spot.proto 절대경로 변형과 같은 부류의 현상. 저장 후
   하려면 근접/하향 센서를 더 달아야 하고, 래퍼 PROTO의 `extraBodySlot` 필드가 그 자리다.
 - **맵이 비행 고도의 수평 단면** — 라이다 수직 시야가 ±15°라 한 번에 보이는 것은 그 고도
   주변뿐이다. 지금은 `drone_layer_mapper`가 **층(1/2/3 m)마다 격자를 따로 누적**해서
-  이 성질을 다루지만(7장), 층 **사이** 높이의 장애물은 여전히 어느 층에도 제대로 안 찍힌다.
+  이 성질을 다루지만(7절), 층 **사이** 높이의 장애물은 여전히 어느 층에도 제대로 안 찍힌다.
   다른 로봇이 보는 맵(`/{ns}/map`)은 그 층들의 합집합이라 지상 로봇 기준 높이가 아니다.
 - **연속적인 3D 경로계획은 여전히 없다.** 지금은 **2.5D 레이어드**(경로 1)다 — 고도를
   1/2/3 m 이산 층으로 두고 층을 고른다. 상승과 수평이동이 섞이지 않고 순차로 일어나며,
-  층 사이 높이의 장애물은 표현되지 않는다. 구조와 실측은 7장에 있다.
+  층 사이 높이의 장애물은 표현되지 않는다. 구조와 실측은 7절에 있다.
   아래는 왜 연속 3D(경로 2)로 가지 않았는지의 배경이다.
 
   원인은 표현 자체에 있다. Nav2 플래너는 `nav_msgs/OccupancyGrid`, 즉 z 축이 없는 2D
@@ -434,18 +436,18 @@ Spot.proto 절대경로 변형과 같은 부류의 현상. 저장 후
 
 초기에는 Webots 내장 C 컨트롤러(`controllers/mavic2pro_medium/`)로 키보드 조종을 했으나,
 **OS별 컴파일이 필요해 이식성이 없고 ROS 2 미션 스택에 붙일 수 없어** 폐기했다.
-5장의 이슈 ①~③은 그 컨트롤러로 규명한 것이며 결론은 그대로 유효하다.
+5절의 이슈 ①~③은 그 컨트롤러로 규명한 것이며 결론은 그대로 유효하다.
 복원이 필요하면 `git log -- workspace/simulator/controllers/`.
 
 ---
 
 ## 7. 고도 회피 — 2.5D 레이어드 (경로 1)
 
-> 📘 **직접 돌려보는 방법과 전체 구조는 [DRONE_NAV.md](DRONE_NAV.md)에 따로 정리했다.**
+> 📘 **직접 돌려보는 방법과 전체 구조는 [09_DRONE_NAV.md](09_DRONE_NAV.md)에 따로 정리했다.**
 > 이 장은 그중 "왜 이렇게 만들었나"의 요약이다.
 >
 > 이후 여기에 **지역(local) 고도 회피**가 더해졌다 — 주행 중 앞이 막히면 실시간으로
-> 넘어가고 지나면 되돌아온다. 그쪽은 DRONE_NAV.md 1·4장에 있다.
+> 넘어가고 지나면 되돌아온다. 그쪽은 [09장](09_DRONE_NAV.md) 1·4절에 있다.
 
 Nav2 는 2D 플래너라 고도를 계획하지 않는다. **그 한 축만 바깥에서** 담당해
 "장애물을 넘어간다" 를 얻는다. Nav2 자체는 한 줄도 고치지 않는다
@@ -542,17 +544,21 @@ slam_toolbox 는 사실상 점유 격자 누적기로만 쓰이고 있었다. �
 | `src/webots_robot_spawner/config/fleet/*.yaml` | 드론의 스폰 좌표 (월드에 인스턴스를 박아 두지 않는다) |
 | `src/webots_python/urdf/Mavic2ProMedium.urdf.xacro` | 플러그인 연결 + 디바이스 매핑 |
 | `src/webots_python/launch/single_drone.launch.py` | 런치 (`ROBOT_ID` 방식) |
-| `src/webots_python/webots_python/drone_layer_mapper.py` | 층별 지도 (slam_toolbox 대체) — 7장 |
-| `src/webots_python/webots_python/altitude_selector.py` | 층 선택 + 순항 고도 결정 — 7장 |
-| `src/webots_python/webots_python/local_altitude_avoider.py` | **지역 고도 회피** (cmd_vel 단독 발행) — [DRONE_NAV.md](DRONE_NAV.md) |
+| `src/webots_python/webots_python/drone_layer_mapper.py` | 층별 지도 (slam_toolbox 대체) — 7절 |
+| `src/webots_python/webots_python/altitude_selector.py` | 층 선택 + 순항 고도 결정 — 7절 |
+| `src/webots_python/webots_python/local_altitude_avoider.py` | **지역 고도 회피** (cmd_vel 단독 발행) — [09_DRONE_NAV.md](09_DRONE_NAV.md) |
 | `.../navigation/launch/nav2.launch.py` | `map_topic` 인자 (드론만 `map_active`) |
 | `docker-configs/*/docker-compose.yml` | `drone1` 서비스 |
 
 ### 관련 문서
 
-- [DRONE_NAV.md](DRONE_NAV.md) — **자율비행 구조 + 직접 테스트하는 법**
-- [Readme 11장](Readme.md#11-drone-중형급-쿼드콥터) — 빠른 사용법
-- [INTERFACES.md](INTERFACES.md) — 세 로봇의 `cmd_vel` 의미 차이 표
-- [SPAWNER.md](SPAWNER.md) — 드론만 `synchronization TRUE`로 되돌리는 이유와 기동 순서 교착
-- [MAP_MERGE.md](MAP_MERGE.md) — 드론 맵이 병합에 들어가는 방법
-- [ugv_setup.md](ugv_setup.md) — 비교 대상인 기준 로봇
+- [09_DRONE_NAV.md](09_DRONE_NAV.md) — **자율비행 구조 + 직접 테스트하는 법**
+- [Readme 11절](Readme.md#11-drone-중형급-쿼드콥터) — 빠른 사용법
+- [01_INTERFACES.md](01_INTERFACES.md) — 세 로봇의 `cmd_vel` 의미 차이 표
+- [03_SPAWNER.md](03_SPAWNER.md) — 드론만 `synchronization TRUE`로 되돌리는 이유와 기동 순서 교착
+- [10_MAP_MERGE.md](10_MAP_MERGE.md) — 드론 맵이 병합에 들어가는 방법
+- [04_UGV_SETUP.md](04_UGV_SETUP.md) — 비교 대상인 기준 로봇
+
+---
+
+← [07. Spot 자율주행](07_SPOT_NAV.md) | [📖 책 목차](Readme.md#-목차) | [09. 드론 자율비행](09_DRONE_NAV.md) →
