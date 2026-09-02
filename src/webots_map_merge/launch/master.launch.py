@@ -40,6 +40,27 @@ def generate_launch_description():
         'params_file', default_value=default_params,
         description='맵 병합 파라미터 + 로봇 초기 위치 YAML')
 
+    # 🕐 시뮬레이션 시계 공급자.
+    #
+    # Webots 는 /clock 을 내지 않는다. 예전에는 UGV 드라이버가 네임스페이스 'ugv1' 일
+    # 때만 발행해서, ugv1 없는 편대(Spot만 / 드론만 / ugv2만 …)는 /clock 발행자가 0개가
+    # 되고 use_sim_time 노드가 전부 조용히 멈췄다.
+    #
+    # 소환기(Supervisor)로 옮기는 것은 안 된다 — 월드의 spawn_supervisor 노드는
+    # synchronization FALSE 라 시뮬과 박자가 안 맞고(TRUE 로 하면 fleet 컨테이너가 없을 때
+    # 시뮬 전체가 멈춘다), 교착 시 step() 에 갇히는 바로 그 컴포넌트다.
+    #
+    # 그래서 **항상 떠 있는 master 에서, 살아 있는 아무 로봇의 odom 스탬프를 중계**한다.
+    # 순수 구독자라 시뮬을 멈출 수단이 없다.
+    #
+    # 🚨 이 노드에는 use_sim_time 을 주지 않는다. 자기가 시계원인데 시계를 기다리면 교착이다.
+    clock_bridge_node = Node(
+        package='webots_python',
+        executable='sim_clock_bridge',
+        name='sim_clock_bridge',
+        output='screen',
+    )
+
     map_merger_node = Node(
         package='webots_map_merge',
         executable='map_merger',
@@ -88,6 +109,8 @@ def generate_launch_description():
         declare_use_rviz,
         declare_rviz_config,
         declare_params_file,
+        # 🕐 시계를 가장 먼저 띄운다. 아래 노드들이 use_sim_time 이라 시계가 없으면 멈춘다.
+        clock_bridge_node,
         map_merger_node,
         joint_filler_node,
         marker_node,

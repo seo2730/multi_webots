@@ -103,7 +103,7 @@ ros2 topic pub -1 /ugv1/goal_pose geometry_msgs/msg/PoseStamped \
 
 | 토픽 | 타입 | 발행 주체 | 내용 |
 |---|---|---|---|
-| `/clock` | `rosgraph_msgs/msg/Clock` | **`ugv1` 드라이버** | 시뮬레이션 시각. ⚠️ [04장 7절](04_UGV_SETUP.md#7-알아-둘-함정) |
+| `/clock` | `rosgraph_msgs/msg/Clock` | **master의 `sim_clock_bridge`** | 시뮬레이션 시각. 살아 있는 아무 로봇의 `odom` 시각을 중계한다. ⚠️ [04장 7절](04_UGV_SETUP.md#7-알아-둘-함정) |
 | `/map_merged` | `nav_msgs/msg/OccupancyGrid` | master (`map_merger`) | 전역 병합 맵, frame = `world` |
 | `/robot_markers` | `visualization_msgs/msg/MarkerArray` | master | 로봇별 화살표 + 이름표 |
 | `/robot_registry` | `std_msgs/msg/String` (JSON) | 로봇마다 (`robot_registrar`) | 명함 + 1 Hz 하트비트 |
@@ -123,15 +123,24 @@ ros2 topic pub -1 /ugv1/goal_pose geometry_msgs/msg/PoseStamped \
 
 ## 4. 서비스
 
-### 로봇 소환
+### 로봇 소환 / 제거
 
 | 서비스 | 타입 | 비고 |
 |---|---|---|
 | `/spawn_robot` | `webots_spawner_msgs/srv/SpawnRobot` | `type`: `ugv`/`spot`/`drone`, `robot_id`, `random`, `x`/`y`/`yaw`, `min_clearance`, `force` |
+| `/remove_robot` | `webots_spawner_msgs/srv/RemoveRobot` | `robot_id`, `all`, `force`. 몸만 지우고 **재소환하지 않는다** |
 
 ```bash
 ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'ugv', random: true}"
+
+# 한 대만 / 전부
+ros2 service call /remove_robot webots_spawner_msgs/srv/RemoveRobot "{robot_id: 'drone1'}"
+ros2 service call /remove_robot webots_spawner_msgs/srv/RemoveRobot "{all: true}"
 ```
+
+> 🚨 **`compose down` 전에 드론을 지우면 시뮬이 안 멈춘다.** 동기화된 드론 몸을 남긴 채
+> 뇌를 내리면 Webots가 없는 컨트롤러를 기다리며 정지한다
+> ([03장 4-1절](03_SPAWNER.md#4-1-제거-remove_robot)).
 
 필드별 의미와 실패 사유는 [03장 9절](03_SPAWNER.md#9-파라미터-표).
 

@@ -356,7 +356,7 @@ ros2 topic pub -1 /spot1/goal_pose geometry_msgs/msg/PoseStamped \
 
 **드론(`drone1`) 컨테이너를 내리면 시뮬레이션 전체가 멈춘다.** 드론은
 `synchronization TRUE`라 Webots가 매 스텝 드론 컨트롤러를 기다린다. Spot만 테스트한다고
-다른 로봇을 내릴 때 드론은 반드시 살려 둔다 (`ugv1`도 `/clock` 발행자라 유지).
+다른 로봇을 내릴 때 드론은 반드시 살려 둔다. 시계는 master가 내지만 **로봇이 0대가 되면 `/clock`도 멈춘다.**
 증상은 `/spot1/odom`이 0건으로 뚝 끊기는 것이다.
 
 ---

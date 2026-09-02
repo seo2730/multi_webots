@@ -434,7 +434,7 @@ n = Node('test', parameter_overrides=[Parameter('use_sim_time', value=True)])
 Spot만 테스트한다고 다른 로봇을 내렸는데 `/spot1/odom`이 0건으로 끊겼다.
 **드론은 `synchronization TRUE`라 Webots가 매 스텝 드론 컨트롤러를 기다린다.**
 
-부하를 줄이려면 **ugv2를 내리고 drone1·ugv1은 살려 둔다**(`ugv1`은 `/clock` 발행자).
+부하를 줄이려면 **ugv2를 내린다.** 시계는 master가 발행하므로 어느 로봇을 내려도 되지만, **로봇을 전부 내리면 `/clock`이 멈춘다**(브릿지가 로봇 odom을 중계하므로).
 
 ### 로봇이 계속 장애물에 끼어 측정을 날렸다
 

@@ -69,7 +69,7 @@ OS마다 다르다.
 |---|---|
 | **Ubuntu** | 터미널에서 `xhost +local:root` — **재부팅할 때마다** 다시 해야 한다 |
 | **Windows** | [VcXsrv](https://github.com/marchaesen/vcxsrv) 설치 → `XLaunch` 실행 → `Multiple windows`, Display number `0` → `Start no client` → **`Disable access control` 반드시 체크** → 마침. 트레이에 `X` 아이콘이 뜨면 성공 |
-| **macOS** | 준비 불필요. 나중에 브라우저로 `http://localhost:6080` 접속해서 본다 |
+| **macOS** | 준비 불필요. 나중에 브라우저로 `http://localhost:6080` 접속해서 본다. **XQuartz로는 RViz2가 안 뜬다**(OpenGL 1.4 천장) — 이유와 "RViz 창만 띄우는" 방법은 [10장 10절 ⑫](10_MAP_MERGE.md#10-해결된-이슈-트러블슈팅-기록) |
 
 > 🚨 **Windows에서 `Disable access control`을 체크하지 않으면** 컨테이너 화면이 거부돼서
 > RViz가 안 뜬다. 가장 흔한 실수다.
@@ -258,7 +258,7 @@ docker compose -f docker-configs/{os}/docker-compose.yml down
 |---|---|
 | **로봇이 안 보인다** | ① Webots가 **Play(▶)** 상태인가 ② 30초 기다렸는가 ③ `docker logs fleet_spawner_{os}` |
 | **로봇이 이상한 데(허공/벽 속)에 있다** | 월드와 편대가 안 맞는다. `oneroom.wbt`를 열었는지 확인 ([3절](#3-webots에서-월드-열기)) |
-| **`/clock`이 안 나온다** | Webots가 멈춰 있거나, `ugv1` 컨테이너가 안 떴다 (시계는 `ugv1`이 발행한다) |
+| **`/clock`이 안 나온다** | Webots가 멈춰 있거나, 로봇 컨테이너가 하나도 안 떴다 (시계는 master가 로봇 odom에서 중계한다) |
 | **목표점을 줬는데 아무 일도 없다** | `frame_id`가 정확히 `{로봇이름}/map`인가. 틀리면 **에러 없이 무시**된다 |
 | **RViz가 안 뜬다 (Windows)** | VcXsrv의 **`Disable access control`** 체크를 빠뜨렸다 ([2절](#2-화면-준비-os별-한-번만)) |
 | **`ros2 topic hz`가 "not published yet"** | 노드가 100개를 넘으면 그 CLI가 거짓말한다. `echo --once`로 확인 |

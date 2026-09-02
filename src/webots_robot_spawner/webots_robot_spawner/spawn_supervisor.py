@@ -25,7 +25,7 @@ ROS 2 노드**다. 컨테이너에 Webots R2025a가 통째로 설치돼 있어(D
 import json
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dc_field
 
 import numpy as np
 import rclpy
@@ -37,7 +37,7 @@ from webots_robot_spawner.brain_launcher import LocalProcessLauncher
 from webots_robot_spawner.fleet_loader import load_fleet
 from webots_robot_spawner.free_space_sampler import FreeSpaceSampler
 from webots_robot_spawner.robot_types import KNOWN_ROBOT_PROTOS, ROBOT_TYPES
-from webots_spawner_msgs.srv import SpawnRobot
+from webots_spawner_msgs.srv import RemoveRobot, SpawnRobot
 
 
 def registry_qos() -> QoSProfile:
@@ -63,6 +63,15 @@ class SpawnResult:
     x: float = 0.0
     y: float = 0.0
     yaw: float = 0.0
+    message: str = ''
+
+
+@dataclass
+class RemoveResult:
+    """제거 시도 하나의 결과. 여러 대를 지울 수 있으므로 이름이 목록이다."""
+
+    success: bool
+    removed: list = dc_field(default_factory=list)
     message: str = ''
 
 
@@ -160,6 +169,8 @@ class SpawnSupervisor(Node):
             self._on_registry, registry_qos())
 
         self._srv = self.create_service(SpawnRobot, 'spawn_robot', self._on_spawn)
+        self._srv_remove = self.create_service(
+            RemoveRobot, 'remove_robot', self._on_remove)
 
         found = self._scan_robots()
         self.get_logger().info(
@@ -481,20 +492,11 @@ class SpawnSupervisor(Node):
             return SpawnResult(True, robot_id=robot_id,
                                message=f'{robot_id} 는 이미 정상 동작 중이라 건너뜁니다')
 
-        removed = False
-        for i in range(self._root_children.getCount()):
-            node = self._root_children.getMFNode(i)
-            if node is None or node.getTypeName() not in KNOWN_ROBOT_PROTOS:
-                continue
-            name_field = node.getField('name')
-            if name_field is not None and name_field.getSFString() == robot_id:
-                node.remove()
-                removed = True
-                break
-
-        if not removed:
+        node = self._find_robot_node(robot_id)
+        if node is None:
             return SpawnResult(False, robot_id=robot_id,
                                message=f'{robot_id} 의 몸을 씬 트리에서 못 찾았습니다')
+        node.remove()
 
         self._spawned.pop(robot_id, None)
         self.get_logger().info(
@@ -562,6 +564,107 @@ class SpawnSupervisor(Node):
             return
         self.get_logger().info(
             f'편대 준비 완료 — 로봇별 컨테이너를 풀어 줍니다 ({self._ready_file})')
+
+    # ------------------------------------------------------------------ 제거
+
+    def _find_robot_node(self, robot_id: str):
+        """씬 트리에서 이름이 일치하는 우리 로봇 노드를 찾는다. 없으면 None."""
+        for i in range(self._root_children.getCount()):
+            node = self._root_children.getMFNode(i)
+            if node is None or node.getTypeName() not in KNOWN_ROBOT_PROTOS:
+                continue
+            name_field = node.getField('name')
+            if name_field is not None and name_field.getSFString() == robot_id:
+                return node
+        return None
+
+    def remove_one(self, robot_id: str, force: bool = False) -> RemoveResult:
+        """로봇 한 대의 몸을 씬 트리에서 지운다. **재소환하지 않는다.**
+
+        소환의 반대편이다. adopt_existing() 이 "지우고 다시 만드는" 경로라면
+        이쪽은 지우기만 한다. 두 가지 용도로 만들었다.
+
+          1. 유령 로봇 청소. 매니페스트에 없는 로봇의 몸은 어떤 경로로도 안 지워졌다
+             (잔여 몸 정리는 매니페스트 항목에만 걸리고, 롤백은 manifest_brains=true
+             일 때만 무장한다). 그래서 월드를 GUI 로 재로드하는 것이 유일한 수단이었다.
+          2. **드론 교착 예방.** compose down 전에 드론 몸을 미리 걷어내면
+             _unfreeze_leftovers 가 설명하는 그 멈춤이 애초에 안 생긴다.
+        """
+        robot_id = str(robot_id).strip()
+        if not robot_id:
+            return RemoveResult(False, message='robot_id 가 비어 있습니다')
+
+        # 우리가 띄운 뇌가 살아 있으면 기본적으로 거절한다. 몸만 지우면 그 뇌는
+        # 붙을 곳을 잃고 끊긴다 — 실수로 지우는 것을 막는다.
+        entry = self._spawned.get(robot_id)
+        handle = entry[1] if entry is not None else None
+        if handle is not None and handle.is_alive() and not force:
+            return RemoveResult(
+                False,
+                message=f'{robot_id} 의 뇌가 아직 살아 있습니다. '
+                        'force: true 를 주면 뇌를 내리고 지웁니다')
+
+        node = self._find_robot_node(robot_id)
+        if node is None:
+            return RemoveResult(
+                False, message=f'{robot_id} 의 몸을 씬 트리에서 못 찾았습니다')
+
+        # 🚨 지우기 전에 synchronization 을 내리지 말 것. **Webots 가 죽는다.**
+        #
+        #    처음에는 "동기화된 몸을 남기면 시뮬이 멈추니 미리 내리자"는 생각으로
+        #    setSFBool(False) 를 넣었다. 그런데 필드 쓰기는 remove() 와 마찬가지로
+        #    **다음 스텝에 적용된다.** 같은 스텝에서 노드를 지우면, 다음 스텝에
+        #    Webots 가 그 요청을 적용하려다 이미 해제된 노드를 참조해 세그폴트로
+        #    죽는다. 실측 크래시:
+        #
+        #      EXC_BAD_ACCESS (SIGSEGV) at 0x18
+        #        WbBoolFieldSetRequest::apply() const
+        #        WbSupervisorUtilities::processImmediateMessages(bool)
+        #        WbSimulationWorld::step()
+        #
+        #    애초에 필요도 없다. **지워진 노드는 Webots 가 기다리지 않는다.**
+        #    동기화를 내리는 것은 *남겨 둘* 몸에만 필요한 처리이고, 그건
+        #    _unfreeze_leftovers 가 첫 step() 전에 따로 한다.
+        node.remove()
+        self._spawned.pop(robot_id, None)
+        self._pending_sync.pop(robot_id, None)
+
+        if handle is not None and handle.is_alive():
+            self._launcher.terminate(handle)
+
+        # 🚨 remove() 는 다음 스텝에 반영된다. 여기서 한 번 밟아 두지 않으면 곧바로
+        #    씬 트리를 스캔하는 쪽에 **방금 지운 몸이 아직 보인다** (adopt_existing 과
+        #    같은 이유이고, 거기서 실제로 로봇이 사라지는 사고가 났었다).
+        self._sv.step(int(self._sv.getBasicTimeStep()))
+
+        self.get_logger().info(f'[{robot_id}] 몸을 제거했습니다')
+        return RemoveResult(True, removed=[robot_id],
+                            message=f'{robot_id} 제거 완료')
+
+    def remove_all(self, force: bool = False) -> RemoveResult:
+        """씬 트리의 우리 로봇을 전부 지운다. 월드 재로드의 대용이다."""
+        names = sorted(n for n, _, _ in self._scan_robots())
+        if not names:
+            return RemoveResult(True, message='지울 로봇이 없습니다')
+
+        removed, failed = [], []
+        for name in names:
+            result = self.remove_one(name, force=force)
+            (removed if result.success else failed).append(name)
+
+        message = f'{len(removed)}대 제거: {", ".join(removed) or "없음"}'
+        if failed:
+            message += f' / {len(failed)}대 실패: {", ".join(failed)}'
+        return RemoveResult(not failed, removed=removed, message=message)
+
+    def _on_remove(self, request, response):
+        """서비스 껍데기. 실제 일은 remove_one() / remove_all() 이 한다."""
+        result = (self.remove_all(force=request.force) if request.all
+                  else self.remove_one(request.robot_id, force=request.force))
+        response.success = result.success
+        response.removed = result.removed
+        response.message = result.message
+        return response
 
     # ------------------------------------------------------------------ 삽입/롤백
 

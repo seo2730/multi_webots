@@ -220,23 +220,35 @@ Space : 정지          = / - : 속도 증감
 
 ## 7. 알아 둘 함정
 
-**① `/clock`을 발행하는 것은 `ugv1` 하나다.**
-`robot_driver.py`는 네임스페이스가 `ugv1`(또는 빈 문자열)일 때만 자기를 "시계 마스터"로
-정하고 `/clock`을 발행한다. Spot·드론 드라이버에는 이 코드가 없다.
+**① `/clock`은 master 컨테이너가 발행한다.**
+[sim_clock_bridge](src/webots_python/webots_python/sim_clock_bridge.py)가
+`master.launch.py`에서 뜨며, **살아 있는 아무 로봇의 `odom` 헤더 시각**을 `/clock`으로
+중계한다. 편대에 어떤 로봇이 있든 상관없다.
 
-```python
-if self.namespace == 'ugv1' or self.namespace == '':
-    self.clock_publisher = self.__node.create_publisher(Clock, '/clock', 10)
-```
+> **옛 방식(2026-09-03 이전): `ugv1` 하드코딩.** `robot_driver.py`가 네임스페이스가
+> `ugv1`(또는 빈 문자열)일 때만 자기를 시계 마스터로 정했다.
+>
+> ```python
+> if self.namespace == 'ugv1' or self.namespace == '':   # 옛 코드
+> ```
+>
+> 그래서 **`ugv1`이 없는 편대는 `/clock` 발행자가 0개**가 됐다. Spot만, 드론만,
+> 심지어 `ugv2`만 띄워도 SLAM·Nav2·맵 병합이 전부 조용히 멈췄다. 로봇이 늘고 편대가
+> 다양해질수록 이 하드코딩이 걸림돌이라 옮겼다.
 
-편대에서 `ugv1`을 빼거나 `ugv1` 컨테이너만 죽이면, **`use_sim_time`을 쓰는 모든 노드
-(SLAM·Nav2·맵 병합)가 시각을 못 받아 조용히 멈출 수 있다.** 무언가 전부 멈춘 것 같으면
-`ros2 topic hz /clock`을 **가장 먼저** 확인한다. 0 Hz면 시뮬이 멈췄거나 시계 발행자가
-없는 것이다.
+**왜 소환기가 아니라 master 인가.** 소환기(spawn_supervisor)는 Supervisor라 `getTime()`을
+직접 갖지만 시계원으로는 못 쓴다. 월드의 그 노드는 `synchronization FALSE`라 시뮬과 박자가
+맞지 않고(TRUE로 바꾸면 fleet 컨테이너가 없을 때 시뮬 전체가 멈춘다), **교착 시 `step()`에
+갇히는 바로 그 컴포넌트**다 — 시계가 가장 필요한 순간에 시계가 죽는다. master는 항상 떠
+있고 순수 구독자라 시뮬을 멈출 수단이 없다.
 
-대안으로 [sim_clock_bridge](src/webots_python/webots_python/sim_clock_bridge.py)가 있다 —
-어떤 로봇의 `odom` 헤더 시각을 그대로 `/clock`으로 중계하는 노드다. 데이터 수집 런치에서
-`use_clock_bridge:=true`로 쓴다.
+`ros2 topic hz /clock`이 0 Hz면 **시뮬이 멈췄거나, 로봇이 한 대도 안 떠 있는 것**이다.
+
+> ⚠️ **알려진 한계 — 마지막 남은 로봇의 뇌를 재시작하면 물릴 수 있다.** 브릿지는 로봇
+> odom에서 시각을 얻는데 그 로봇의 드라이버는 `use_sim_time`이라 `/clock`을 기다린다.
+> 로봇이 하나뿐일 때 그 뇌만 재시작하면 서로를 기다리는 순환이 생긴다. **깨끗한 기동
+> (`compose up`으로 다 같이)에서는 부트스트랩이 되는 것을 4개 편대에서 확인했다.**
+> 물렸으면 전체를 다시 올린다.
 
 **② 시뮬레이션 Play(▶) 상태 확인이 항상 1순위.**
 일시정지 상태면 `step()`이 호출되지 않아 TF/odom/스캔이 전혀 발행되지 않는다. 증상만

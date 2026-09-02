@@ -115,6 +115,15 @@ class DroneLayerMapper(Node):
         self.occupied_threshold = int(
             self.declare_parameter('occupied_threshold', 2).value)
 
+        # 🚨 창을 기체를 따라 옮긴다. 끄면 origin_x/y 가 상수로 고정되는데, 그러면
+        #    월드마다 격자를 손으로 맞춰야 하고 틀리면 **조용히** 탐색률 0% 가 된다
+        #    (recenter_if_needed 의 설명 참고). 기본값 켬.
+        self.rolling = bool(self.declare_parameter('rolling', True).value)
+        # 가장자리까지 이만큼(m) 아래로 줄면 옮긴다. 라이다 유효거리보다 커야
+        # 창 밖을 보느라 버리는 점이 안 생긴다.
+        self.recenter_margin = float(
+            self.declare_parameter('recenter_margin', 6.0).value)
+
         self.n_layers = len(self.layer_heights)
         shape = (self.n_layers, self.height, self.width)
         # 로그 오즈 대신 정수 카운터를 쓴다. 여기서 필요한 것은 확률이 아니라
@@ -157,7 +166,9 @@ class DroneLayerMapper(Node):
 
         self.get_logger().info(
             f'층별 매퍼 시작 | 층 {self.layer_heights} (±{self.layer_half} m) | '
-            f'격자 {self.width}x{self.height} @ {self.resolution} m | stride {self.stride}')
+            f'격자 {self.width}x{self.height} @ {self.resolution} m | stride {self.stride} | '
+            + (f'롤링 창 {self.width * self.resolution:.0f}x{self.height * self.resolution:.0f} m '
+               f'(여유 {self.recenter_margin} m)' if self.rolling else '고정 격자'))
 
     # ------------------------------------------------------------------
     def closest_layer(self, z: float) -> int:
@@ -168,6 +179,72 @@ class DroneLayerMapper(Node):
         self.pose = (p.x, p.y, p.z, yaw_from_quaternion(msg.pose.pose.orientation))
         # 순항 고도가 바뀌면 Nav2에 주는 층도 따라 바뀐다.
         self.active_layer = self.closest_layer(p.z)
+        if self.rolling:
+            self.recenter_if_needed(p.x, p.y)
+
+    def recenter_if_needed(self, x: float, y: float):
+        """기체가 격자 가장자리에 가까워지면 창을 기체 중심으로 옮긴다.
+
+        왜 롤링인가
+        -----------
+        예전에는 원점과 크기가 상수였다(`origin -10,-8`, `20x16 m`). 작은 아레나
+        (`my_world`)에 맞춘 값이라 **넓은 월드에서는 기체가 아예 격자 밖**이었다.
+        실측: `oneroom`(96x96 m)에서 드론이 (-46.2, 23.5)에 소환되자 격자
+        x[-10..10] y[-8..8] 밖이라 센서가 30 Hz 로 들어와도 **탐색률이 0% 였고**,
+        층 선택기는 세 층 모두 "미탐색 100%"로 보고 헛돌았으며, Nav2 는
+        "Robot is out of bounds of the costmap"으로 목표를 실패시켰다.
+
+        월드 전체를 덮도록 격자를 키우는 방법도 있지만(100x100 m @ 0.1 m 면 층당
+        100만 셀) 월드가 바뀔 때마다 다시 맞춰야 하고 대부분이 빈 칸이다.
+        창을 기체를 따라 움직이면 **월드 크기와 무관**해진다.
+
+        어떻게
+        ------
+        가장자리까지 여유가 `recenter_margin` 아래로 떨어지면 기체가 한가운데
+        오도록 원점을 옮기고, 기존 데이터를 그만큼 **시프트**한다. 이미 본 것을
+        버리지 않기 위해서다. 새로 드러난 띠만 미탐색으로 비운다.
+        """
+        half_w = self.width * self.resolution / 2.0
+        half_h = self.height * self.resolution / 2.0
+        cx = self.origin_x + half_w
+        cy = self.origin_y + half_h
+        if (abs(x - cx) < half_w - self.recenter_margin
+                and abs(y - cy) < half_h - self.recenter_margin):
+            return  # 아직 여유가 있다
+
+        # 기체가 한가운데 오도록. 격자 눈금에 맞춰 정수 셀 단위로만 움직인다 —
+        # 소수 셀만큼 옮기면 기존 데이터를 재보간해야 하고 그때마다 뭉개진다.
+        di = int(round(((x - half_w) - self.origin_x) / self.resolution))
+        dj = int(round(((y - half_h) - self.origin_y) / self.resolution))
+        if di == 0 and dj == 0:
+            return
+
+        if abs(di) >= self.width or abs(dj) >= self.height:
+            # 창 하나를 통째로 건너뛴 이동. 겹치는 부분이 없으니 전부 버린다.
+            self.odds[:] = 0
+            self.seen[:] = False
+        else:
+            # 원점이 +di 셀 옮겨가면 같은 월드 지점의 색인은 -di 로 이동한다.
+            # 축: (층, j=height, i=width)
+            self.odds = np.roll(self.odds, (-dj, -di), axis=(1, 2))
+            self.seen = np.roll(self.seen, (-dj, -di), axis=(1, 2))
+            # np.roll 은 돌아 나온 값을 반대편에 붙인다. 그 띠는 새로 드러난
+            # 미탐색 영역이므로 지운다. 안 지우면 반대편 지형이 유령으로 남는다.
+            if di > 0:
+                self.odds[:, :, -di:] = 0; self.seen[:, :, -di:] = False
+            elif di < 0:
+                self.odds[:, :, :-di] = 0; self.seen[:, :, :-di] = False
+            if dj > 0:
+                self.odds[:, -dj:, :] = 0; self.seen[:, -dj:, :] = False
+            elif dj < 0:
+                self.odds[:, :-dj, :] = 0; self.seen[:, :-dj, :] = False
+
+        self.origin_x += di * self.resolution
+        self.origin_y += dj * self.resolution
+        self.get_logger().info(
+            f'창 이동 -> 원점 ({self.origin_x:.1f}, {self.origin_y:.1f}) '
+            f'| x[{self.origin_x:.1f}..{self.origin_x + self.width * self.resolution:.1f}] '
+            f'y[{self.origin_y:.1f}..{self.origin_y + self.height * self.resolution:.1f}]')
 
     def on_active_request(self, _msg):
         pass  # 예약: 선택기가 층을 강제하고 싶을 때 쓸 자리

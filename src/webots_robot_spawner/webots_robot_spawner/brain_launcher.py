@@ -102,7 +102,7 @@ class LocalProcessLauncher:
         return BrainHandle(robot_id=robot_id, process=process, log_path=log_path)
 
     def terminate(self, handle: BrainHandle, timeout: float = 10.0):
-        """뇌를 정리한다. 롤백 경로에서만 쓴다 (사용자용 despawn은 아직 없다)."""
+        """뇌를 정리한다. 롤백 경로와 /remove_robot(force) 에서 쓴다."""
         if not handle.is_alive():
             return
         pgid = os.getpgid(handle.process.pid)

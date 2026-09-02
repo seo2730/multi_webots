@@ -193,10 +193,32 @@ Docker Engine이 설치된 우분투 데스크탑에서 바로 동작 (X11 네�
 > Windows용 컨테이너도 우분투와 동일하게 도커 기본 **bridge 네트워크**(`windows_ros_bridge`)를 씀. 원래는 `network_mode: host`였으나, Docker Desktop for Windows는 host 모드를 줘도 실제 Windows 네트워크가 아니라 Docker Desktop 내부 VM 네트워크에 격리되어 호스트(크롬 등)에서 컨테이너 포트로 아예 접속이 안 되는 문제가 있어 bridge로 전환함. 자세한 배경은 [8-2. Windows 네트워킹 참고사항 (웹 개발자용)](#8-2-windows-네트워킹-참고사항-웹-개발자용)에 정리.
 
 ### 5-3. macOS (맥)
-현재 맥에서 X11 - rviz2 연동이 상당히 불안한 관계로 VNC로 설치
 
-1. 브라우저에서 **http://localhost:6080** 접속 후 **vnc.html** 클릭
-2. 화면 한 가운데 Connect 클릭
+맥에는 **X11(XQuartz)로 RViz2를 띄울 수 없다.** 그래서 VNC를 쓴다.
+
+> 이유: XQuartz의 간접 GLX가 **OpenGL 1.4까지만** 노출하는데 RViz2(OGRE)는 2.1 이상이
+> 필요하다. `LIBGL_ALWAYS_SOFTWARE=1`을 줘도 GLX 핸드셰이크 단계에서 실패한다
+> (`No matching fbConfigs` → `GLXBadCurrentWindow`). 인텔 맥에서 실측한 기록과 우회
+> 방법은 [10장 10절 ⑫](10_MAP_MERGE.md#10-해결된-이슈-트러블슈팅-기록)에 정리돼 있다.
+> 참고로 **비-GL X11 앱은 XQuartz로 잘 뜬다** — 막히는 건 RViz2 같은 3D 앱뿐이다.
+
+**사용법 (기본 경로)**
+
+1. 컨테이너를 띄운다 — `docker compose -f docker-configs/mac/docker-compose.yml up -d`
+2. 브라우저에서 **http://localhost:6080** 접속 후 **vnc.html** 클릭
+3. 화면 한 가운데 **Connect** 클릭
+4. VNC 안의 터미널에서 RViz2를 띄운다 (맥은 자동 실행하지 않는다 — [10장 10절 ⑪](10_MAP_MERGE.md#10-해결된-이슈-트러블슈팅-기록))
+
+   ```bash
+   source /ros2_ws/install/setup.bash
+   ros2 run rviz2 rviz2 -d /ros2_ws/install/webots_map_merge/share/webots_map_merge/rviz/master_merged.rviz
+   ```
+
+> 💡 **데스크톱 전체 말고 RViz 창만 보고 싶다면** — 창관리자(fluxbox)를 빼고 Xvfb에 RViz2만
+> 올리는 방법이 있다. 인텔 맥에서 `1500x900` / **31 fps**로 동작 확인했고, 브라우저 대신
+> 맥 기본 화면 공유(`open vnc://localhost:5901`)로도 볼 수 있다. 절차는
+> [10장 10절 ⑫](10_MAP_MERGE.md#10-해결된-이슈-트러블슈팅-기록) 참고.
+> (아직 compose 기본값은 아니고 손으로 띄우는 절차다.)
 
 ---
 
@@ -601,8 +623,25 @@ ros2 service call /spawn_robot webots_spawner_msgs/srv/SpawnRobot "{type: 'spot'
 응답에 실제 부여된 이름과 좌표, 실패 시 사유가 담긴다.
 필드별 의미와 실패 사유 전체는 [03장 9절](03_SPAWNER.md#9-파라미터-표).
 
-**despawn은 없다.** 스폰 실패 시 롤백만 한다 — 뇌가 유예 시간 안에 죽으면 몸을 씬 트리에서
-되돌려 조종 불가능한 유령 로봇이 쌓이지 않게 한다.
+**제거는 `/remove_robot` 이다.** 몸만 지우고 재소환하지 않는다.
+
+```bash
+ros2 service call /remove_robot webots_spawner_msgs/srv/RemoveRobot "{robot_id: 'drone1'}"
+ros2 service call /remove_robot webots_spawner_msgs/srv/RemoveRobot "{all: true}"   # 전부
+```
+
+| 필드 | 뜻 |
+|---|---|
+| `robot_id` | 지울 로봇 이름. `all` 이 true면 무시 |
+| `all` | 씬 트리의 우리 로봇을 전부 제거. **월드 재로드 대신** 쓴다 |
+| `force` | 우리가 띄운 뇌가 살아 있어도 지운다 (그 뇌도 함께 내린다) |
+
+> 🚨 **`docker compose down` 전에 드론을 지워라.** 동기화된 드론 몸을 남긴 채 뇌를 내리면
+> Webots가 없는 컨트롤러를 기다리며 **시뮬이 멈추고**, 소환기도 `step()`에서 막혀 자력
+> 복구가 안 된다. 자세한 것은 [03장 4-1절](03_SPAWNER.md#4-1-제거-remove_robot).
+
+스폰 실패 시에는 롤백도 한다 — 소환기가 뇌를 직접 띄우는 경우(`manifest_brains:=true`),
+뇌가 유예 시간 안에 죽으면 몸을 씬 트리에서 되돌려 유령 로봇이 쌓이지 않게 한다.
 
 ### 12-2. 편대 매니페스트
 
@@ -736,7 +775,7 @@ ugv3 (런타임 소환된 몸) ←TCP→ 이 뇌만 fleet 컨테이너가 띄운
 | # | 확인 | 아니면 |
 |---|---|---|
 | 1 | **Webots가 Play(▶) 상태인가** | 멈춰 있으면 `step()`이 안 돌아 아무것도 안 나온다 |
-| 2 | **`ros2 topic hz /clock`** | 0 Hz면 시뮬이 멈췄거나 시계 발행자(`ugv1`)가 없다 → [04장 7절](04_UGV_SETUP.md#7-알아-둘-함정) |
+| 2 | **`ros2 topic hz /clock`** | 0 Hz면 시뮬이 멈췄거나 로봇이 한 대도 안 떠 있다 (시계는 master의 `sim_clock_bridge`가 로봇 odom에서 중계) → [04장 7절](04_UGV_SETUP.md#7-알아-둘-함정) |
 | 3 | **QoS** | `TRANSIENT_LOCAL` 토픽을 기본 QoS로 구독하면 **에러 없이** 아무것도 안 온다 → [01장 6절](01_INTERFACES.md#6-qos-주의-목록) |
 | 4 | **`ros2 topic hz`를 믿지 말 것** | 노드 100개가 넘으면 CLI가 거짓말한다. rclpy로 직접 구독 → [10장 10절](10_MAP_MERGE.md#10-해결된-이슈-트러블슈팅-기록) |
 | 5 | **로그** | 매니페스트 로봇은 `docker logs -f {ns}_brain_{os}`, 런타임 소환 로봇은 fleet 컨테이너 안 `/tmp/spawned_robots/{ns}.log` |

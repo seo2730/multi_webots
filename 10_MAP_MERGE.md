@@ -831,6 +831,75 @@ RViz는 `localhost:6080` 접속 후 내부 터미널에서 띄운다.
 ros2 run rviz2 rviz2 -d /ros2_ws/install/webots_map_merge/share/webots_map_merge/rviz/master_merged.rviz
 ```
 
+### ⑫ 인텔 맥에서 RViz 창 하나만 띄우기 — XQuartz는 안 된다
+
+⑪의 VNC 경로는 **데스크톱(fluxbox)이 통째로** 뜬다. RViz만 보고 싶으면 거슬린다.
+Windows의 VcXsrv처럼 맥에도 X 서버(XQuartz)가 있으니 그걸 쓰면 될 것 같은데 **안 된다.**
+
+실측 환경: MacBook Pro (Intel i7-8750H, Radeon Pro 555X) · Docker Desktop 29.4.1 ·
+XQuartz 설정 완료(`enable_iglx=1`, `nolisten_tcp=0`, TCP 6000 리슨 확인)
+
+| 시도 | 결과 |
+|---|---|
+| 컨테이너 → XQuartz, **비-GL** X11 (`xdpyinfo` / `xlsclients`) | ✅ 된다 |
+| 컨테이너 → XQuartz, **RViz2 (GL)** | ❌ `libGL error: No matching fbConfigs or visuals found` → `GLXBadCurrentWindow` |
+
+원인은 XQuartz의 **간접 GLX가 OpenGL 1.4까지만** 노출한다는 것이다(`glxinfo -B`로 확인).
+RViz2가 쓰는 OGRE는 2.1 이상을 요구한다. `LIBGL_ALWAYS_SOFTWARE=1`,
+`GALLIUM_DRIVER=llvmpipe`, `MESA_GL_VERSION_OVERRIDE=3.3`을 전부 줘도 **X 서버와의 GLX
+핸드셰이크 자체가 실패**하므로 소용이 없다. 알려진 미해결 이슈다
+([ros2/rviz#929](https://github.com/ros2/rviz/issues/929)).
+
+> 앱 창만 전달하는 xpra도 지금은 막혀 있다. 맥 클라이언트가 **2026-09-01부로 Homebrew에서
+> Gatekeeper 검사 실패로 disabled** 되어 `brew install --cask xpra`가 안 된다.
+
+**되는 방법 — 창관리자를 안 띄운다.** VNC를 쓰되 `fluxbox`를 빼고 Xvfb에 RViz2만 올리면
+화면에 있는 것이 RViz 창 하나뿐이라 "데스크톱 전체" 문제가 사라진다. GL은 컨테이너 안
+llvmpipe가 처리하므로 XQuartz의 GLX 천장과 무관하다.
+
+```bash
+# rviz_only.sh
+#!/bin/bash
+export DISPLAY=:0
+rm -rf /tmp/.X*
+# 🌟 fluxbox 를 띄우지 않는다 = 바탕화면·작업표시줄이 없다
+Xvfb :0 -screen 0 1600x1000x24 &
+sleep 2
+source /opt/ros/humble/setup.bash
+source /ros2_ws/install/setup.bash
+rviz2 -d /ros2_ws/install/webots_map_merge/share/webots_map_merge/rviz/master_merged.rviz &
+sleep 6
+x11vnc -display :0 -forever -nopw -bg -xkb -shared
+websockify --web=/usr/share/novnc/ 6080 localhost:5900 &
+tail -f /dev/null
+```
+
+```bash
+docker run -d --name rviz_only -p 6081:6080 -p 5901:5900 \
+  -e LIBGL_ALWAYS_SOFTWARE=1 -e GALLIUM_DRIVER=llvmpipe \
+  -e ROS_DOMAIN_ID=30 -e RMW_IMPLEMENTATION=rmw_fastrtps_cpp \
+  -v "$PWD/rviz_only.sh:/rviz_only.sh:ro" \
+  mac-master bash /rviz_only.sh
+```
+
+보는 방법은 둘 다 **설치가 필요 없다.**
+
+| 방법 | 주소 | 비고 |
+|---|---|---|
+| 브라우저 (noVNC) | `http://localhost:6081/vnc.html?autoconnect=true&resize=scale` | `autoconnect=true`면 Connect 버튼도 안 눌러도 된다 |
+| 맥 기본 화면 공유 | `open vnc://localhost:5901` (Finder `⌘K`도 동일) | 네이티브 창이라 더 부드럽다. 비밀번호 없음(`-nopw`) |
+
+실측 결과: 창 `1500x900`, llvmpipe 소프트웨어 렌더로 **31 fps**, `master_merged.rviz` 설정
+정상 로드(`Merged Map` → `/map_merged`). 로봇을 아직 안 띄웠으면 `Global Status: Warn`이
+뜨는데 데이터가 없어서 그런 것이라 정상이다.
+
+> 🚨 **이 절차는 아직 compose에 반영돼 있지 않다.**
+> `docker-configs/mac/docker-compose.yml`로 정식 기동하면 여전히 ⑪의 방식(fluxbox 데스크톱 +
+> `localhost:6080`)이 뜬다. 위는 **손으로 띄우는 절차**다.
+> 기본값으로 만들려면 `docker-configs/mac/Dockerfile`에 이 스크립트를 추가하고(`colcon build`
+> **뒤에** 붙여야 캐시가 살아 재빌드가 짧다) master 서비스의 `command`를 `/start_vnc.sh` 대신
+> 이것으로 바꾸고 `5900` 포트를 노출하면 된다.
+
 ---
 
 ## 11. 알려진 한계 / 다음 작업

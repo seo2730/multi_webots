@@ -10,13 +10,15 @@
 
 - 담당 패키지: [src/webots_robot_spawner/](src/webots_robot_spawner/) +
   [src/webots_spawner_msgs/](src/webots_spawner_msgs/)
-- 서비스: **`/spawn_robot`** (`webots_spawner_msgs/srv/SpawnRobot`)
+- 서비스: **`/spawn_robot`** (`webots_spawner_msgs/srv/SpawnRobot`),
+  **`/remove_robot`** (`webots_spawner_msgs/srv/RemoveRobot`)
 
 ## 목차
 - [1. 문제 정의](#1-문제-정의)
 - [2. 세 층 구조 — 몸 / 뇌 / 컨테이너](#2-세-층-구조--몸--뇌--컨테이너)
 - [3. 로봇 종류 정의표](#3-로봇-종류-정의표)
 - [4. 소환 한 번에 일어나는 일](#4-소환-한-번에-일어나는-일)
+  - [4-1. 제거 (`/remove_robot`)](#4-1-제거-remove_robot)
 - [5. 빈 자리 고르기](#5-빈-자리-고르기)
 - [6. 편대 매니페스트와 compose 생성](#6-편대-매니페스트와-compose-생성)
 - [7. 기동 순서 (왜 드론만 다른가)](#7-기동-순서-왜-드론만-다른가)
@@ -152,16 +154,86 @@ DEF가 없으면 찾을 수단이 없고, 모두 같은 DEF면 2대째가 남의
 그래서 `needs_sync`인 로봇만 **뇌가 붙은 것을 확인한 뒤** TRUE로 되돌린다.
 주입 순간의 멈춤은 피하고, 비행에 필요한 보장은 되찾는다.
 
-### 롤백 (despawn은 없다)
+### 롤백 — 뇌가 죽으면 몸을 되돌린다
 
-despawn 서비스는 만들지 않았다. 대신 **스폰 실패 시 롤백만** 한다 — 뇌가 유예 시간
-(`brain_grace_period`, 기본 8초) 안에 죽으면 몸을 씬 트리에서 되돌려, 조종할 수 없는
-유령 로봇이 쌓이지 않게 한다. 런치 파일 오타 하나로 시뮬이 시체로 채워지는 것을 막는
-장치다.
+**스폰 실패 시 롤백**한다 — 뇌가 유예 시간(`brain_grace_period`, 기본 8초) 안에 죽으면
+몸을 씬 트리에서 되돌려, 조종할 수 없는 유령 로봇이 쌓이지 않게 한다. 런치 파일 오타
+하나로 시뮬이 시체로 채워지는 것을 막는 장치다.
+
+> 🚨 **롤백은 소환기가 뇌를 직접 띄울 때만 무장한다** (`manifest_brains:=true`).
+> compose 기본값은 `false`(뇌는 로봇별 컨테이너 담당)라서 프로세스 핸들이 없고,
+> 그래서 이 경로가 한 번도 안 걸린다. 그 경우의 청소는 아래 `/remove_robot` 이다.
 
 > 소환기 노드는 **`use_sim_time: false`로 돈다.** 타임스탬프가 붙는 데이터를 발행하지
 > 않고, 대신 "뇌가 몇 초 안에 떴는가"를 실제 시간으로 재야 하기 때문이다. 시뮬을
 > 일시정지하면 sim time이 멈춰 롤백 감시가 영원히 안 돌게 된다.
+
+### 4-1. 제거 (`/remove_robot`)
+
+소환의 반대편. **몸만 지우고 재소환하지 않는다.**
+
+```bash
+ros2 service call /remove_robot webots_spawner_msgs/srv/RemoveRobot "{robot_id: 'drone1'}"
+ros2 service call /remove_robot webots_spawner_msgs/srv/RemoveRobot "{all: true}"
+```
+
+**왜 필요했나.** 몸을 지우는 경로가 두 개 있었는데 둘 다 좁았다.
+
+| 기존 경로 | 걸리는 조건 | 한계 |
+|---|---|---|
+| 잔여 몸 정리 ([8절](#8-잔여-몸-정책-stale_body_policy)) | **매니페스트에 있는** 로봇 | 지우고 곧바로 **다시 소환**한다 |
+| 롤백 (`_arm_rollback`) | `manifest_brains:=true` 일 때만 | compose 기본값에서는 무장 자체가 안 된다 |
+
+그래서 **매니페스트 밖 로봇의 몸은 어떤 경로로도 안 지워졌고**, 월드를 GUI에서
+재로드하는 것이 유일한 청소 수단이었다. 실제로 1대짜리 매니페스트로 테스트할 때
+이전 편대의 몸 3대가 남아 계속 CPU를 먹었다.
+
+**드론 교착 예방이 두 번째 용도다.** 동기화된 드론 몸을 남긴 채 `docker compose down`
+하면 Webots가 없는 컨트롤러를 기다리며 **시뮬 전체가 멈춘다.** 그러면 소환기도 `step()`
+에서 막혀 `synchronization`을 내리지 못한다 — 필드 쓰기가 반영되려면 스텝이 돌아야 하는데
+그 스텝이 막혀 있기 때문이다. **자력 복구가 안 되는 교착**이라 `_unfreeze_leftovers`가
+첫 `step()` **전에** 도는 것이고, 그래도 이미 얼어붙은 뒤라면 손쓸 수 없다.
+
+`down` 전에 드론을 지워 두면 그 상황이 아예 안 생긴다.
+
+```bash
+# 종료 절차
+ros2 service call /remove_robot webots_spawner_msgs/srv/RemoveRobot "{all: true}"
+docker compose -f docker-configs/{os}/docker-compose.yml down
+```
+
+**구현에서 지킨 것 두 가지.**
+
+1. **지우기 전에 `synchronization`을 내린다.** 동기화된 몸을 남긴 채 스텝을 밟으면
+   그 순간 멈춘다.
+2. **지운 뒤 `step()`을 한 번 밟는다.** `remove()`는 다음 스텝에 반영돼서, 곧바로 씬
+   트리를 스캔하면 **방금 지운 몸이 아직 보인다.** 잔여 몸 정리에서 실제로 이 때문에
+   사고가 났었다(자기 몸이 자기 자리를 막아 소환이 거절되고, 몸은 이미 지워져 로봇이
+   아예 사라짐).
+
+우리가 띄운 뇌가 살아 있으면 기본적으로 **거절**한다. 몸만 지우면 그 뇌는 붙을 곳을 잃고
+끊기기 때문이다. `force: true`를 주면 뇌까지 함께 내리고 지운다.
+
+> 🚨 **한계 — 이미 얼어붙은 시뮬은 이걸로 못 푼다.** 시뮬이 멈추면 소환기가 `step()`
+> 안에 갇히고, 그러면 **서비스 콜백 자체가 호출되지 않아** 호출이 응답 없이 매달린다.
+> 이 서비스는 교착을 **예방**하는 것이지 **치료**하는 것이 아니다. 이미 얼었으면
+> Webots 에서 `File > Reload World` 밖에 없다.
+
+> 🚨 **지우기 전에 `synchronization` 을 내리지 말 것 — Webots 가 죽는다.**
+> 처음에는 "동기화된 몸을 남기면 시뮬이 멈추니 미리 내리자"고 `setSFBool(False)` 를
+> 넣었다. 그런데 **필드 쓰기는 `remove()` 와 마찬가지로 다음 스텝에 적용된다.** 같은
+> 스텝에서 노드를 지우면 다음 스텝에 Webots 가 그 요청을 적용하려다 이미 해제된 노드를
+> 참조해 세그폴트로 죽는다. 실측 크래시:
+>
+> ```
+> EXC_BAD_ACCESS (SIGSEGV) at 0x18
+>   WbBoolFieldSetRequest::apply() const
+>   WbSupervisorUtilities::processImmediateMessages(bool)
+>   WbSimulationWorld::step()
+> ```
+>
+> 애초에 필요도 없다 — **지워진 노드는 Webots 가 기다리지 않는다.** 동기화를 내리는 것은
+> *남겨 둘* 몸에만 필요한 처리이고, 그건 `_unfreeze_leftovers` 가 첫 `step()` 전에 한다.
 
 ---
 
@@ -323,6 +395,17 @@ docker run --rm -v "$PWD:/w" -w /w windows-master \
 | `force` | 빈 공간 검사 실패에도 그 자리에 놓음 |
 
 응답에 실제 부여된 이름과 좌표, 실패 시 사유가 담긴다.
+
+### 서비스 요청 필드 (`RemoveRobot.srv`)
+
+| 필드 | 뜻 |
+|---|---|
+| `robot_id` | 지울 로봇 이름. `all` 이 true면 무시 |
+| `all` | 씬 트리의 우리 로봇을 전부 제거 (월드 재로드 대용) |
+| `force` | 우리가 띄운 뇌가 살아 있어도 지움. 그 뇌도 함께 내린다 |
+
+응답의 `removed` 에 **실제로 지운** 이름들이 담긴다. 자세한 것은
+[4-1절](#4-1-제거-remove_robot).
 
 ---
 

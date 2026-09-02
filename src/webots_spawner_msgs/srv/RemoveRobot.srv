@@ -1,0 +1,28 @@
+# 실행 중인 Webots 시뮬레이션에서 로봇의 몸을 제거한다. 재소환하지 않는다.
+#
+# 사용 예 (한 줄로 입력):
+#   ros2 service call /remove_robot webots_spawner_msgs/srv/RemoveRobot "{robot_id: 'drone1'}"
+#   ros2 service call /remove_robot webots_spawner_msgs/srv/RemoveRobot "{all: true}"
+#
+# 주의: 이 파일의 주석에 역슬래시를 쓰지 말 것. rosidl 이 주석을 IDL 주석으로 옮기면서
+# 줄 끝 역슬래시를 이스케이프로 해석해 빌드가 UnicodeDecodeError 로 깨진다.
+
+# 지울 로봇 이름. all 이 true 면 무시된다.
+string robot_id
+
+# true 면 씬 트리에 있는 우리 로봇을 전부 지운다. 월드를 GUI 로 재로드하는 것의 대용이다.
+bool all
+
+# 우리가 띄운 뇌가 아직 살아 있어도 지운다. 기본은 거절한다.
+# force 로 지우면 그 뇌도 함께 내린다.
+bool force
+
+---
+
+bool success
+
+# 실제로 지운 로봇 이름들.
+string[] removed
+
+# 성공/실패 사유. 실패했을 때 여기만 보면 원인을 알 수 있게 채운다.
+string message

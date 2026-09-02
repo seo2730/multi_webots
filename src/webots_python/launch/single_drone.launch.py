@@ -68,6 +68,11 @@ def generate_launch_description():
     #   손으로 띄워 볼 때:  ROBOT_ID=drone2 ros2 launch webots_python single_drone.launch.py
     ns = os.environ.get('ROBOT_ID', 'drone1')
 
+    # 소환 좌표. 층 매퍼의 첫 창을 여기 중심으로 잡는 데 쓴다 (창은 이후 기체를
+    # 따라 움직이므로 정확할 필요는 없고, 시작하자마자 크게 튀지 않게 하는 용도다).
+    init_x = float(os.environ.get('ROBOT_INIT_X', '0.0'))
+    init_y = float(os.environ.get('ROBOT_INIT_Y', '0.0'))
+
     nav_mode = os.environ.get('NAV_MODE', '2.5d').strip().lower()
     if nav_mode == '3d':
         raise RuntimeError(
@@ -163,8 +168,17 @@ def generate_launch_description():
             "layer_heights": LAYER_HEIGHTS,
             "layer_half_height": 0.5,
             "resolution": 0.1,
-            "origin_x": -10.0, "origin_y": -8.0,
-            "width": 200, "height": 160,
+            # 🚨 창은 기체를 따라 움직인다(rolling). 예전에는 여기가 상수
+            #    (-10, -8) / 20x16 m 였는데 작은 아레나(my_world) 기준이라
+            #    넓은 월드에서는 기체가 격자 **밖**이었다. 실측: oneroom(96x96 m)
+            #    에서 드론이 (-46.2, 23.5)에 소환되자 탐색률 0% 가 되고 층 선택기가
+            #    "미탐색 100%"로 헛돌았으며 Nav2 는 out of bounds 로 목표를 실패시켰다.
+            #    아래 origin 은 **첫 창의 위치일 뿐**이고, 소환 좌표를 중심으로 잡아
+            #    시작하자마자 창이 크게 튀는 것을 막는다.
+            "rolling": True,
+            "recenter_margin": 6.0,
+            "origin_x": init_x - 15.0, "origin_y": init_y - 15.0,
+            "width": 300, "height": 300,   # 30 x 30 m 창
             "min_range": 1.05,      # 라이다 minRange 1 m 로 잘린 값을 버린다
             "max_range": 20.0,
             "cloud_stride": 4,      # 군집 대비 — 격자보다 촘촘한 점은 비용일 뿐이다

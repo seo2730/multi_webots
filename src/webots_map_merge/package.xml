@@ -17,6 +17,8 @@
   <depend>python3-numpy</depend>
   <depend>python3-yaml</depend>
 
+  <!-- master.launch.py 가 sim_clock_bridge(시뮬 시계 공급자)를 띄운다 -->
+  <exec_depend>webots_python</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>rviz2</exec_depend>
