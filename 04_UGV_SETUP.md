@@ -257,6 +257,21 @@ curr_time.sec = int(wb_time)
 중계 → `/clock` 등장. **로봇이 한 대뿐일 때 그 뇌만 재시작해도 정상 복구되는 것을
 실측 확인했다** (`/clock` 32.3 Hz, odom 29.7 Hz로 회복).
 
+> 🚨 **발행자가 둘이면 시각이 뒤로 간다 — 실제로 겪었다.** master 에 브릿지를 넣으면서
+> `robot_driver.py` 의 `ugv1` 하드코딩 발행자를 지우지 않아 `/clock` 발행자가 **2개**가
+> 된 적이 있다. 둘이 미세하게 다른 시각(Webots 직접 vs odom 중계)을 쏘자 구독자 쪽에서
+> 시각이 역행했고, tf2 가 `Detected jump back in time. Clearing TF buffer.` 로 버퍼를
+> 계속 비웠다. 그 결과 **Nav2 가 변환을 못 찾아 경로를 못 만들었다** — 드론은 목표를
+> 받고도 `cmd_vel_nav` 를 0건 냈다. `ugv1` 은 자기 시계라 버텨서 **드론만 죽은 것처럼
+> 보였다.**
+>
+> 이상하면 가장 먼저 확인한다:
+>
+> ```bash
+> ros2 topic info /clock          # Publisher count 는 반드시 1
+> docker logs {ns}_brain_{os} | grep "jump back in time"   # 0건이어야 정상
+> ```
+
 **② 시뮬레이션 Play(▶) 상태 확인이 항상 1순위.**
 일시정지 상태면 `step()`이 호출되지 않아 TF/odom/스캔이 전혀 발행되지 않는다. 증상만
 보면 코드가 고장 난 것처럼 보인다.

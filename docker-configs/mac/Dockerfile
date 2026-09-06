@@ -77,6 +77,14 @@ RUN add-apt-repository ppa:borglab/gtsam-release-4.1 -y && \
     apt-get install -y libgtsam-dev libgtsam-unstable-dev && \
     rm -rf /var/lib/apt/lists/*
 
+# LLM 목표 할당기(llm_goal_assigner)용 OpenAI 호환 클라이언트.
+# rosdep 키가 없어 pip 로 넣는다. NIM/vLLM/Ollama 어디에 붙든 이 하나면 된다.
+# 🚨 osrf/ros:humble-desktop 에는 pip 이 아예 없다(python3 만 있음). 같은 레이어에서
+#    python3-pip 을 먼저 깔지 않으면 exit 127 로 빌드가 깨진다.
+RUN apt-get update && apt-get install -y python3-pip && \
+    pip3 install --no-cache-dir "openai>=1.40" && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /ros2_ws
 
 RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc

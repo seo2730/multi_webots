@@ -15,7 +15,7 @@ setup(
     zip_safe=True,
     maintainer='root',
     maintainer_email='seo2730@naver.com',
-    description='External goal sources (web UI clicks, Gemini AI) relayed into Nav2 goals',
+    description='External goal sources (web UI clicks, LLM planner) relayed into Nav2 goals',
     license='TODO: License declaration',
     extras_require={
         'test': [
@@ -25,8 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'web_goal_relay = webots_goal_bridge.web_goal_relay:main',
-            # 아직 연동 완료 안됨
-            #'gemini_goal_assigner = webots_goal_bridge.gemini_goal_assigner:main',
+            'llm_goal_assigner = webots_goal_bridge.llm_goal_assigner:main',
         ],
     },
 )

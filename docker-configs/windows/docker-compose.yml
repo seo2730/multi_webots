@@ -40,6 +40,10 @@ x-ros-common: &ros-common
     - ROS_LOCALHOST_ONLY=0
     - ROS_DOMAIN_ID=30
 
+    # LLM 목표 할당기용. 호스트의 NVIDIA_API_KEY 를 그대로 넘긴다.
+    # 🚨 키를 이 파일에 적지 말 것 — 저장소에 올라간다.
+    - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+    - GEMINI_API_KEY=${GEMINI_API_KEY:-}
 services:
 # >>> FLEET GENERATED — gen_fleet_compose.py 가 관리한다. 직접 고치지 말 것
   # 매니페스트: config/fleet/oneroom.yaml  (로봇 4대)
