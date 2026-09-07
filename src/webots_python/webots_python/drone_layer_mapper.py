@@ -124,6 +124,25 @@ class DroneLayerMapper(Node):
         self.recenter_margin = float(
             self.declare_parameter('recenter_margin', 6.0).value)
 
+        # 🚨 롤링 창은 **지나온 곳을 잊는다.** Nav2 에는 그게 맞지만(현재 고도의 주변만
+        #    보면 된다), 맵 병합과 탐사 판단에는 치명적이다 — 드론이 창을 벗어나는 순간
+        #    그 영역이 /map_merged 에서 사라져 커버리지가 되레 줄었다
+        #    (실측: 라운드마다 -6k, -18k, -15k 셀). 그러면 "전체를 다 탐사했다"를
+        #    잴 수가 없다.
+        #
+        #    그래서 병합기·탐사용 /{ns}/map 은 **월드를 덮는 누적 격자**로 따로 낸다.
+        #    Nav2 용 map_active 와 층별 map_layer_k 는 창 그대로다 — 역할이 이미
+        #    토픽으로 갈려 있어서 구조에도 맞는다.
+        #    해상도는 창보다 거칠게 잡는다. 탐사 판단에는 충분하고 메모리가 1/4 이 된다.
+        self.global_res = float(self.declare_parameter('global_resolution', 0.2).value)
+        self.global_origin_x = float(self.declare_parameter('global_origin_x', -50.0).value)
+        self.global_origin_y = float(self.declare_parameter('global_origin_y', -50.0).value)
+        gw = int(self.declare_parameter('global_width', 500).value)
+        gh = int(self.declare_parameter('global_height', 500).value)
+        self.global_w, self.global_h = gw, gh
+        # UNKNOWN 으로 시작해 창에서 본 것을 계속 덮어써 누적한다.
+        self.global_grid = np.full((gh, gw), UNKNOWN, dtype=np.int8)
+
         self.n_layers = len(self.layer_heights)
         shape = (self.n_layers, self.height, self.width)
         # 로그 오즈 대신 정수 카운터를 쓴다. 여기서 필요한 것은 확률이 아니라
@@ -406,7 +425,47 @@ class DroneLayerMapper(Node):
         union = grids[0]
         for g in grids[1:]:
             union = np.maximum(union, g)
-        self.pub_union.publish(self.msg_of(union))
+
+        # 창에서 본 것을 누적 격자에 적는다. 창이 옮겨가도 여기 남는다.
+        self.accumulate(union)
+        self.pub_union.publish(self.msg_of_global())
+
+
+    def accumulate(self, union):
+        """현재 창에서 본 것(union)을 누적 전역 격자에 적는다.
+
+        장애물이 이긴다(np.maximum). 미탐색(-1)은 덮지 않는다 — 창이 지나간 뒤
+        그 자리가 미탐색으로 비워지는데, 그걸 누적 격자에 적으면 이미 본 것을
+        지우게 된다. 그게 바로 고치려는 문제다.
+        """
+        h, w = union.shape
+        # 창 셀 중심의 월드 좌표 -> 누적 격자 색인
+        ii = np.arange(w) * self.resolution + self.origin_x + self.resolution / 2
+        jj = np.arange(h) * self.resolution + self.origin_y + self.resolution / 2
+        gi = np.floor((ii - self.global_origin_x) / self.global_res).astype(np.int32)
+        gj = np.floor((jj - self.global_origin_y) / self.global_res).astype(np.int32)
+        okx = (gi >= 0) & (gi < self.global_w)
+        oky = (gj >= 0) & (gj < self.global_h)
+        if not okx.any() or not oky.any():
+            return
+        sub = union[np.ix_(oky, okx)]
+        tgt = self.global_grid[np.ix_(gj[oky], gi[okx])]
+        known = sub >= 0                      # 미탐색은 반영하지 않는다
+        self.global_grid[np.ix_(gj[oky], gi[okx])] = np.where(
+            known, np.maximum(tgt, sub), tgt)
+
+    def msg_of_global(self) -> OccupancyGrid:
+        m = OccupancyGrid()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.header.frame_id = f'{self.ns}/map'
+        m.info.resolution = self.global_res
+        m.info.width = self.global_w
+        m.info.height = self.global_h
+        m.info.origin.position.x = self.global_origin_x
+        m.info.origin.position.y = self.global_origin_y
+        m.info.origin.orientation.w = 1.0
+        m.data = self.global_grid.reshape(-1).tolist()
+        return m
 
 
 def main(args=None):

@@ -31,6 +31,7 @@ LLM 이 기여할 여지가 없다. 기여하려면 거리에 담기지 않는 �
 """
 
 import itertools
+import math
 
 import numpy as np
 
@@ -124,7 +125,7 @@ def reachable(robot, frontier):
     return x0 <= frontier['x'] <= x1 and y0 <= frontier['y'] <= y1
 
 
-def assign_by_distance(obs):
+def assign_by_distance(obs, min_separation=0.0):
     """거리 합을 최소화하는 **정확한** 할당. 이것이 베이스라인이다.
 
     로봇 k대, 후보 n개면 조합이 n!/(n-k)! 뿐이라(2대·후보 12개면 132가지) 완전탐색이
@@ -133,6 +134,14 @@ def assign_by_distance(obs):
 
     한 후보에 두 로봇이 가지 않도록 **서로 다른 후보**를 배정한다 — 겹치면 탐사가
     낭비되는데, 이건 거리만 봐도 알 수 있는 제약이라 베이스라인에도 넣는다.
+
+    🚨 `min_separation` 은 그것만으로는 부족해서 넣었다. 군집 버킷이 2 m 라 인접한
+       두 버킷이 별개 후보가 되는데, "서로 다른 id" 만 보장하면 **1.5 m 떨어진 사실상
+       같은 지점**에 두 로봇이 배정된다(실측: ugv1 (-31.4,38.4) / drone1 (-32.8,38.9)).
+       분산 효과가 사라진다.
+
+       베이스라인에 일부러 넣는다 — LLM 이 이겼을 때 "거리 휴리스틱을 제대로 짰으면
+       될 일이었다" 는 반론을 막기 위해서다. 비교 기준은 공정해야 한다.
     """
     robots = obs['robots']
     fronts = obs['frontiers']
@@ -146,13 +155,21 @@ def assign_by_distance(obs):
         #    그 로봇의 Nav2 가 계획 자체를 못 만들어 라운드가 통째로 낭비된다.
         if any(not reachable(robots[ri], fronts[fi]) for ri, fi in enumerate(combo)):
             continue
+        if min_separation > 0.0 and len(combo) > 1:
+            # 배정된 후보끼리 너무 붙어 있으면 두 로봇이 같은 곳을 훑게 된다
+            if any(math.hypot(fronts[a]['x'] - fronts[b]['x'],
+                              fronts[a]['y'] - fronts[b]['y']) < min_separation
+                   for a, b in itertools.combinations(combo, 2)):
+                continue
         cost = sum(fronts[fi]['dist'][robots[ri]['id']]
                    for ri, fi in enumerate(combo))
         if cost < best_cost:
             best, best_cost = combo, cost
 
     if best is None:
-        # 모든 조합이 막혔다. 각자 도달 가능한 것 중 가장 가까운 것으로 따로 준다.
+        # 모든 조합이 막혔다(분리 거리를 만족하는 조합이 없는 경우 포함).
+        # 각자 도달 가능한 것 중 가장 가까운 것으로 따로 준다 — 분산은 포기하되
+        # 탐사가 멈추는 것보다는 낫다.
         used, out = set(), []
         for r in robots:
             cand = [(f['dist'][r['id']], i) for i, f in enumerate(fronts)

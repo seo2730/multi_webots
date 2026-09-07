@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             'web_goal_relay = webots_goal_bridge.web_goal_relay:main',
             'llm_goal_assigner = webots_goal_bridge.llm_goal_assigner:main',
+            'frontier_allocator = webots_goal_bridge.frontier_allocator_node:main',
         ],
     },
 )

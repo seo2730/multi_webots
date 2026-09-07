@@ -107,6 +107,7 @@ ros2 topic pub -1 /ugv1/goal_pose geometry_msgs/msg/PoseStamped \
 | `/map_merged` | `nav_msgs/msg/OccupancyGrid` | master (`map_merger`) | 전역 병합 맵, frame = `world` |
 | `/robot_markers` | `visualization_msgs/msg/MarkerArray` | master | 로봇별 화살표 + 이름표 |
 | `/robot_registry` | `std_msgs/msg/String` (JSON) | 로봇마다 (`robot_registrar`) | 명함 + 1 Hz 하트비트 |
+| `/{ns}/goal_pose` | `geometry_msgs/msg/PoseStamped` | master (`frontier_allocator`, 선택) | 전역 지도에서 뽑은 프론티어를 로봇별로 **배정**한 결과 |
 | `/tf`, `/tf_static` | `tf2_msgs/msg/TFMessage` | 전원 | 네임스페이스 없이 공유 |
 
 `/robot_registry` 메시지:
