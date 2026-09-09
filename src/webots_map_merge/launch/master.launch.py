@@ -19,7 +19,6 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     use_rviz = LaunchConfiguration('use_rviz')
-    use_allocator = LaunchConfiguration('use_allocator')
     params_file = LaunchConfiguration('params_file')
 
     pkg_dir = get_package_share_directory('webots_map_merge')
@@ -28,10 +27,6 @@ def generate_launch_description():
     # 관제용 RViz 설정: Fixed Frame = world, 전체 병합 맵 + 로봇 위치.
     # 기존 webots_python 쪽 설정은 ugv1 단독 뷰라 그대로 두고 새로 만들었다.
     rviz_config = LaunchConfiguration('rviz_config')
-
-    declare_use_allocator = DeclareLaunchArgument(
-        'use_allocator', default_value='false',
-        description='프론티어 할당기를 함께 띄울지 여부 (자동으로 목표를 배정한다)')
 
     declare_use_rviz = DeclareLaunchArgument(
         'use_rviz', default_value='true', description='RViz2를 함께 띄울지 여부')
@@ -64,28 +59,6 @@ def generate_launch_description():
         executable='sim_clock_bridge',
         name='sim_clock_bridge',
         output='screen',
-    )
-
-    # 🧭 다중 로봇 프론티어 할당기.
-    #
-    # 전역 지도(/map_merged)에서 프론티어를 뽑아 **어느 로봇이 어디로 갈지** 배정한다.
-    # 다중 로봇 할당은 원리적으로 중앙집중이다 — 다른 로봇이 어디로 가는지 모르면
-    # 겹침을 막을 수 없다. 그래서 로봇 컨테이너가 아니라 여기(master)에 둔다.
-    #
-    # strategy 파라미터가 **LLM 이 대체할 자리**다. 지금은 거리 기준 최적 할당이
-    # 들어 있고, LLM 할당이 이 베이스라인을 못 이기면 증류할 것이 없다는 뜻이다.
-    #
-    # 기본값은 꺼 둔다(use_allocator:=true 로 켠다) — 목표를 자동으로 쏘므로,
-    # 손으로 목표를 주며 실험하는 중에 켜져 있으면 서로 덮어쓴다.
-    allocator_node = Node(
-        condition=IfCondition(use_allocator),
-        package='webots_goal_bridge',
-        executable='frontier_allocator',
-        name='frontier_allocator',
-        output='screen',
-        parameters=[{'use_sim_time': True,
-                     'period': 30.0,
-                     'strategy': 'distance'}],
     )
 
     map_merger_node = Node(
@@ -134,12 +107,10 @@ def generate_launch_description():
 
     return LaunchDescription([
         declare_use_rviz,
-        declare_use_allocator,
         declare_rviz_config,
         declare_params_file,
         # 🕐 시계를 가장 먼저 띄운다. 아래 노드들이 use_sim_time 이라 시계가 없으면 멈춘다.
         clock_bridge_node,
-        allocator_node,
         map_merger_node,
         joint_filler_node,
         marker_node,

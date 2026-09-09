@@ -215,3 +215,31 @@ services:
       start_period: 5s
     depends_on:
       - master
+
+  # 3. 탐사 할당 컨테이너 (explorer)
+  # 🧭 전역 지도(/map_merged)에서 프론티어를 뽑아 **어느 로봇이 어디로 갈지** 배정한다.
+  #    다중 로봇 할당은 원리적으로 중앙집중이다 — 다른 로봇이 어디로 가는지 모르면
+  #    겹침을 막을 수 없다.
+  #
+  # 🚨 master 가 아니라 **별도 컨테이너**인 이유: master 는 맵 병합·RViz·시계라는
+  #    관제 기반이고, 탐사 할당은 그 위에 얹히는 정책이라 실험 중 자주 바꿔 낀다
+  #    (거리 기준 ↔ LLM). 같이 두면 전략 하나 바꾸려고 RViz 와 맵 병합까지 재시작해야
+  #    하고, 할당기가 죽으면 관제까지 흔들린다.
+  #
+  #    strategy 가 **LLM 이 대체할 자리**다. LLM 할당이 거리 기준 베이스라인을 못 이기면
+  #    증류할 것이 없다는 뜻이므로, 비교 기준을 먼저 둔다.
+  #
+  # 기본적으로 자동 기동하지 않는다 (profiles). 손으로 목표를 주며 실험할 때 켜져 있으면
+  # 서로 덮어쓰기 때문이다. 켜려면:
+  #     docker compose -f docker-configs/windows/docker-compose.yml --profile explore up -d
+  explorer:
+    <<: *ros-common
+    container_name: explorer_windows
+    profiles: ["explore"]
+    restart: unless-stopped
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 launch webots_goal_bridge allocator.launch.py
+                 strategy:=distance min_separation:=15.0"
+    depends_on:
+      - master

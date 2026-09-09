@@ -359,6 +359,32 @@ docker run --rm -v "$PWD:/w" -w /w windows-master \
 > 죽는다 — 실측: 뇌만 붙인 드론은 `wb_gps_get_values() called for a disabled device`가
 > 4726건, 같은 시점에 새로 소환한 드론은 0건이었다.
 
+### 🚨 반복 실험에서 `compose down` 은 리셋이 아니다
+
+macOS 구성에서는 **Webots 가 호스트에서 네이티브로 돈다.** `docker compose down` 은
+컨테이너만 내리므로 월드·몸·시뮬 시계가 전부 그대로 남는다 (실측: 시뮬 시계가
+리셋 없이 82742 초 ≒ 23 시간까지 누적돼 있었다).
+
+이때 위 표의 두 줄이 **로봇마다 갈린다.** 뇌 컨테이너가 빨리 떠서 `/robot_registry`
+에 먼저 등록되면 그 몸은 "뇌가 살아 있음"으로 분류돼 **지난 시행의 자세를 그대로
+물려받는다.** 실측 사례:
+
+```
+[ugv1]   뇌 없이 몸만 남아 있어 제거하고 다시 소환합니다   ← 소환 좌표로 리셋됨
+= drone1: drone1 몸이 이미 있어 그대로 둡니다              ← 지난 시행 자세 유지
+```
+
+같은 스크립트인데 시행마다 시작 상태가 달라져 결과를 비교할 수 없다. 시행 사이에는
+`down` **전에** [`/remove_robot`](#4-1-제거-remove_robot) 으로 월드를 먼저 비운다:
+
+```bash
+docker exec fleet_spawner_mac bash -lc \
+  "source /ros2_ws/install/setup.bash && ros2 service call /remove_robot \
+   webots_spawner_msgs/srv/RemoveRobot '{all: true, force: true}'"
+```
+
+제대로 됐으면 다음 기동의 소환기 로그가 `이미 있는 로봇 0대` / `뇌만 붙임 0대` 다.
+
 ---
 
 ## 9. 파라미터 표

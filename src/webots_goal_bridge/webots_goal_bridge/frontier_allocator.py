@@ -125,34 +125,13 @@ def reachable(robot, frontier):
     return x0 <= frontier['x'] <= x1 and y0 <= frontier['y'] <= y1
 
 
-def assign_by_distance(obs, min_separation=0.0):
-    """거리 합을 최소화하는 **정확한** 할당. 이것이 베이스라인이다.
-
-    로봇 k대, 후보 n개면 조합이 n!/(n-k)! 뿐이라(2대·후보 12개면 132가지) 완전탐색이
-    정확하고 즉시 끝난다. scipy 의 헝가리안을 쓸 수도 있지만, 그건 이미지에 우연히
-    깔려 있는 패키지라 의존을 만들지 않는다.
-
-    한 후보에 두 로봇이 가지 않도록 **서로 다른 후보**를 배정한다 — 겹치면 탐사가
-    낭비되는데, 이건 거리만 봐도 알 수 있는 제약이라 베이스라인에도 넣는다.
-
-    🚨 `min_separation` 은 그것만으로는 부족해서 넣었다. 군집 버킷이 2 m 라 인접한
-       두 버킷이 별개 후보가 되는데, "서로 다른 id" 만 보장하면 **1.5 m 떨어진 사실상
-       같은 지점**에 두 로봇이 배정된다(실측: ugv1 (-31.4,38.4) / drone1 (-32.8,38.9)).
-       분산 효과가 사라진다.
-
-       베이스라인에 일부러 넣는다 — LLM 이 이겼을 때 "거리 휴리스틱을 제대로 짰으면
-       될 일이었다" 는 반론을 막기 위해서다. 비교 기준은 공정해야 한다.
-    """
-    robots = obs['robots']
-    fronts = obs['frontiers']
-    if not robots or not fronts:
-        return {'assignments': [], 'total_cost': 0.0, 'method': 'distance'}
-
+def _best_combo(robots, fronts, min_separation):
+    """주어진 분리 거리에서 거리 합이 최소인 조합. 없으면 None."""
     k = min(len(robots), len(fronts))
     best, best_cost = None, float('inf')
     for combo in itertools.permutations(range(len(fronts)), k):
-        # 🚨 도달 불가능한 배정은 후보에서 제외한다. 안 그러면 거리 합은 작아 보여도
-        #    그 로봇의 Nav2 가 계획 자체를 못 만들어 라운드가 통째로 낭비된다.
+        # 🚨 도달 불가능한 배정은 제외한다. 안 그러면 거리 합은 작아 보여도
+        #    그 로봇의 Nav2 가 계획 자체를 못 만들어 주기가 통째로 낭비된다.
         if any(not reachable(robots[ri], fronts[fi]) for ri, fi in enumerate(combo)):
             continue
         if min_separation > 0.0 and len(combo) > 1:
@@ -165,29 +144,75 @@ def assign_by_distance(obs, min_separation=0.0):
                    for ri, fi in enumerate(combo))
         if cost < best_cost:
             best, best_cost = combo, cost
+    return (best, best_cost) if best is not None else (None, None)
 
-    if best is None:
-        # 모든 조합이 막혔다(분리 거리를 만족하는 조합이 없는 경우 포함).
-        # 각자 도달 가능한 것 중 가장 가까운 것으로 따로 준다 — 분산은 포기하되
-        # 탐사가 멈추는 것보다는 낫다.
-        used, out = set(), []
-        for r in robots:
-            cand = [(f['dist'][r['id']], i) for i, f in enumerate(fronts)
-                    if i not in used and reachable(r, f)]
-            if not cand:
-                continue
-            _, i = min(cand)
-            used.add(i)
-            out.append({'robot': r['id'], 'frontier_id': fronts[i]['id']})
-        return {'assignments': out, 'total_cost': assignment_cost(obs, out) or 0.0,
-                'method': 'distance(부분)'}
 
-    return {
-        'assignments': [{'robot': robots[ri]['id'], 'frontier_id': fronts[fi]['id']}
-                        for ri, fi in enumerate(best)],
-        'total_cost': round(best_cost, 2),
-        'method': 'distance',
-    }
+def assign_by_distance(obs, min_separation=0.0, relax_steps=4):
+    """거리 합을 최소화하는 **정확한** 할당. 이것이 베이스라인이다.
+
+    로봇 k대, 후보 n개면 조합이 n!/(n-k)! 뿐이라(2대·후보 12개면 132가지) 완전탐색이
+    정확하고 즉시 끝난다. scipy 의 헝가리안을 쓸 수도 있지만, 그건 이미지에 우연히
+    깔려 있는 패키지라 의존을 만들지 않는다.
+
+    한 후보에 두 로봇이 가지 않도록 **서로 다른 후보**를 배정한다.
+
+    🚨 `min_separation` 은 그것만으로는 부족해서 넣었다. 군집 버킷이 2 m 라 인접한
+       두 버킷이 별개 후보가 되는데, "서로 다른 id" 만 보장하면 **1.5 m 떨어진 사실상
+       같은 지점**에 두 로봇이 배정된다(실측: ugv1 (-31.4,38.4) / drone1 (-32.8,38.9)).
+       분산 효과가 사라진다.
+
+    🚨 **못 맞추면 단계적으로 낮춘다.** 예전에는 조건을 만족하는 조합이 없으면 제약을
+       통째로 버리고 "각자 가장 가까운 후보"로 무너졌다. 그러면 두 로봇이 같은 구역에서
+       부산하게 움직이며 1대만큼만 일한다 — 다중 로봇을 쓰는 이유가 사라진다.
+       지금은 15 → 11 → 7 → 4 → 0 처럼 낮춰가며 **가능한 최대 분리**를 취한다.
+
+       `achieved_separation` 에 실제로 확보한 값을, `degraded` 에 요구치에 못 미쳤는지를
+       담는다. 이 둘이 LLM 과의 비교 지표다 — LLM 이 같은 상황에서 더 큰 분리를
+       찾아내면 그 차이가 곧 증류할 가치다.
+    """
+    robots = obs['robots']
+    fronts = obs['frontiers']
+    if not robots or not fronts:
+        return {'assignments': [], 'total_cost': 0.0, 'method': 'distance',
+                'degraded': False, 'achieved_separation': None}
+
+    # 요구치에서 0 까지 균등하게 낮춰 가며 처음 성공하는 값을 쓴다
+    steps = [min_separation * (1.0 - i / max(1, relax_steps))
+             for i in range(relax_steps)] + [0.0] if min_separation > 0.0 else [0.0]
+    for sep in steps:
+        best, cost = _best_combo(robots, fronts, sep)
+        if best is None:
+            continue
+        out = [{'robot': robots[ri]['id'], 'frontier_id': fronts[fi]['id']}
+               for ri, fi in enumerate(best)]
+        actual = min((math.hypot(fronts[a]['x'] - fronts[b]['x'],
+                                 fronts[a]['y'] - fronts[b]['y'])
+                      for a, b in itertools.combinations(best, 2)), default=None)
+        degraded = min_separation > 0.0 and sep < min_separation
+        return {
+            'assignments': out,
+            'total_cost': round(cost, 2),
+            'method': 'distance' if not degraded else f'distance(분리 {sep:.1f}m)',
+            'degraded': degraded,
+            'achieved_separation': round(actual, 1) if actual is not None else None,
+            'reason': (f'요구 {min_separation} m 를 못 맞춰 {sep:.1f} m 로 낮춤'
+                       if degraded else ''),
+        }
+
+    # 도달 가능한 조합이 하나도 없다 — 각자 갈 수 있는 곳으로 따로 준다.
+    used, out = set(), []
+    for r in robots:
+        cand = [(f['dist'][r['id']], i) for i, f in enumerate(fronts)
+                if i not in used and reachable(r, f)]
+        if not cand:
+            continue
+        _, i = min(cand)
+        used.add(i)
+        out.append({'robot': r['id'], 'frontier_id': fronts[i]['id']})
+    return {'assignments': out, 'total_cost': assignment_cost(obs, out) or 0.0,
+            'method': 'distance(부분)', 'degraded': True,
+            'achieved_separation': None,
+            'reason': '도달 가능한 조합이 없어 각자 가장 가까운 후보로'}
 
 
 def assignment_cost(obs, assignments):

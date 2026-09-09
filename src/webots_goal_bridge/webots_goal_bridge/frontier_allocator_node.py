@@ -105,6 +105,9 @@ class FrontierAllocatorNode(Node):
         self.target = {}        # ns -> (x, y)   지속 목표
         self.stuck = {}         # ns -> 진전 없는 주기 수
         self.last_pos = {}
+        # 🚨 분산 포기(폴백) 집계. 이게 곧 비교 지표다 — 베이스라인이 몇 번이나
+        #    "분리 제약을 만족하는 조합이 없어" 물러났는지가 LLM 이 개선할 여지다.
+        self.stats = {'rounds': 0, 'degraded': 0, 'sep_sum': 0.0, 'sep_n': 0}
 
         self.create_subscription(OccupancyGrid, '/map_merged', self._on_map, MAP_QOS)
         self.create_subscription(String, '/robot_registry', self._on_registry, 10)
@@ -147,22 +150,43 @@ class FrontierAllocatorNode(Node):
 
     # ------------------------------------------------------------- 목표 전송
     def clamp(self, ns, x, y):
-        """계획 가능 범위 밖이면 로봇→목표 방향으로 범위 안까지만 자른다(경유점)."""
+        """계획 가능 범위 밖이면 범위 안까지만 자른다(경유점).
+
+        🚨 축별로 자른다. 예전에는 로봇→목표 광선 전체를 스칼라 s 로 줄였는데
+           (s = 두 축의 교차 매개변수 중 min), **한 축의 미미한 여유가 다른 축의
+           긴 전진을 통째로 죽였다.** 실측 사례:
+
+             ugv1 (-48.11, -23.42) → 목표 (-49.6, 41.0)   dx=-1.49, dy=+64.4
+             맵 좌측 끝 -50.11 이라 여백 2 m 를 빼면 x0 = -48.11 = 로봇의 x
+             → x축 s 후보 = 0 → min 이 이걸 채택 → 경유점 = 로봇 자기 위치
+
+           경유점이 제자리면 Nav2 는 즉시 "Reached the goal" 을 내고 로봇은 안
+           움직인다. 안 움직이니 맵이 안 자라고, 맵이 그대로니 다음 주기도 똑같다
+           — **영구 교착**이다. 커버리지가 20% 언저리에서 평평해진 원인이 이것이었다.
+
+           축별로 자르면 위 사례는 (-48.11, 41.0) 이 되어 북쪽 64 m 가 살아난다.
+        """
         b = self.bounds.get(ns)
         if not b or ns not in self.pose:
             return x, y
         m = 2.0                      # 가장자리에 딱 붙이면 코스트맵 경계에 걸린다
-        x0, y0, x1, y1 = b[0] + m, b[1] + m, b[2] - m, b[3] - m
-        if x0 <= x <= x1 and y0 <= y <= y1:
-            return x, y
+        # 맵이 여백 두 배보다 좁으면 상자가 뒤집힌다. 그때는 여백을 포기한다.
+        mx = m if b[2] - b[0] > 2 * m else 0.0
+        my = m if b[3] - b[1] > 2 * m else 0.0
+        gx = min(max(x, b[0] + mx), b[2] - mx)
+        gy = min(max(y, b[1] + my), b[3] - my)
+
+        # 그래도 제자리에 가까우면(로봇이 맵 구석에 박혀 모든 축이 막힌 경우)
+        # 목표 방향으로 최소 전진거리만큼은 밀어 준다. 코스트맵을 벗어나 Nav2 가
+        # 거절할 수 있지만, 확실한 교착보다는 낫다.
         rx, ry = self.pose[ns].position.x, self.pose[ns].position.y
-        dx, dy = x - rx, y - ry
-        s = 1.0
-        for lo, hi, p, d in ((x0, x1, rx, dx), (y0, y1, ry, dy)):
-            if abs(d) > 1e-6:
-                s = min(s, ((hi if d > 0 else lo) - p) / d)
-        s = max(0.0, min(1.0, s))
-        return rx + dx * s, ry + dy * s
+        if math.hypot(gx - rx, gy - ry) < self.min_goal_dist:
+            dx, dy = x - rx, y - ry
+            d = math.hypot(dx, dy)
+            if d > 1e-6:
+                step = min(d, self.min_goal_dist)
+                gx, gy = rx + dx / d * step, ry + dy / d * step
+        return gx, gy
 
     def send_goal(self, ns, x, y):
         gx, gy = self.clamp(ns, x, y)
@@ -211,6 +235,19 @@ class FrontierAllocatorNode(Node):
         obs = build_observation(grid, info.origin.position.x, info.origin.position.y,
                                 info.resolution, robots, fr)
         result = assign_by_distance(obs, min_separation=self.min_sep)  # ← LLM 이 대체할 자리
+
+        self.stats['rounds'] += 1
+        sep = result.get('achieved_separation')
+        if sep is not None:
+            self.stats['sep_sum'] += sep
+            self.stats['sep_n'] += 1
+        if result.get('degraded'):
+            self.stats['degraded'] += 1
+            # 조용히 넘어가면 "분리 제약을 걸었다"고 믿는 채로 두 로봇이 3 m 옆에
+            # 배정되는 일이 생긴다(실측). 반드시 남긴다.
+            self.get_logger().warn(
+                f"분리 완화 — {result.get('reason', '')} | 확보 {sep} m "
+                f"(누적 {self.stats['degraded']}/{self.stats['rounds']}회)")
         fresh = {a['robot']: next(f for f in fr if f['id'] == a['frontier_id'])
                  for a in result['assignments']}
 
@@ -226,6 +263,14 @@ class FrontierAllocatorNode(Node):
                 + (f' -> 경유점 ({gx:.1f}, {gy:.1f})'
                    if abs(gx - tgt[0]) + abs(gy - tgt[1]) > 0.1 else ''))
         self._record(obs, result)
+        if self.stats['rounds'] % 20 == 0:
+            avg = (self.stats['sep_sum'] / self.stats['sep_n']
+                   if self.stats['sep_n'] else 0.0)
+            self.get_logger().info(
+                f"집계: {self.stats['rounds']}주기 | 분리 완화 "
+                f"{self.stats['degraded']}회 "
+                f"({100.0 * self.stats['degraded'] / self.stats['rounds']:.0f}%) | "
+                f"평균 확보 분리 {avg:.1f} m (요구 {self.min_sep} m)")
 
     def _update_progress(self, ns, r):
         """진전이 없으면 센다. 규칙 3 — 포기 조건의 근거."""
@@ -260,7 +305,8 @@ class FrontierAllocatorNode(Node):
             return
         try:
             with open(self.dataset_path, 'a', encoding='utf-8') as fh:
-                fh.write(json.dumps({'observation': obs, 'result': result},
+                fh.write(json.dumps({'observation': obs, 'result': result,
+                                     'stats': dict(self.stats)},
                                     ensure_ascii=False) + '\n')
         except OSError as exc:
             self.get_logger().warn(f'데이터셋 기록 실패: {exc}')
