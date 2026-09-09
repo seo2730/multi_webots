@@ -31,6 +31,7 @@ LLM 이 기여할 여지가 없다. 기여하려면 거리에 담기지 않는 �
 """
 
 import itertools
+import json
 import math
 
 import numpy as np
@@ -248,3 +249,114 @@ def validate(obs, assignments):
             return f"후보 중복 배정: {a['frontier_id']}"
         seen_r.add(a['robot']); seen_f.add(a['frontier_id'])
     return None
+
+
+# --------------------------------------------------------------------- LLM 전략
+
+ALLOC_PROMPT = """\
+너는 실내를 탐사하는 다중 로봇 편대의 **임무 계획기**다. 전역 지도에서 뽑은 탐사
+후보(프론티어)를 로봇에게 나눠 배정하는 것이 네 일이다.
+
+{obs}
+
+읽는 법
+- robots[].sensor / strength: 그 기체가 무엇을 잘 보는가. **거리만으로 정하지 마라.**
+- robots[].nav_bounds: 그 로봇이 실제로 경로를 만들 수 있는 범위 [x0,y0,x1,y1].
+  이 밖의 후보를 주면 그 로봇은 한 주기를 통째로 낭비한다. 없으면 제한이 없다는 뜻.
+- frontiers[].cells: 그 후보에 속한 경계 셀 수. 클수록 넓은 미탐색 영역이다.
+- frontiers[].openness: 후보 주변이 얼마나 트였는가(0~1). 높으면 트인 공간이다.
+- frontiers[].dist: 로봇별 직선 거리(m).
+
+규칙
+1. 한 로봇에 후보 하나. 두 로봇이 같은 후보로 가지 않는다.
+2. 배정된 후보끼리 **{min_sep} m 이상 떨어뜨려라.** 가까우면 두 대가 같은 구역을
+   중복 탐사해 1대만큼만 일한다. 도저히 못 맞추면 가능한 한 멀리 떨어뜨린다.
+3. 좌표를 새로 만들지 마라. 반드시 frontiers 목록의 id 중에서 고른다.
+4. nav_bounds 밖의 후보는 그 로봇에게 배정하지 마라.
+
+아래 JSON 형식으로만 답한다:
+{{"assignments": [{{"robot": "<id>", "frontier_id": <정수>}}, ...], "reason": "<한 문장>"}}
+"""
+
+
+def _separation_of(obs, assignments):
+    """배정된 후보들 사이의 최소 거리. 1대 이하면 None."""
+    by_id = {f['id']: f for f in obs['frontiers']}
+    pts = [by_id[a['frontier_id']] for a in assignments if a['frontier_id'] in by_id]
+    if len(pts) < 2:
+        return None
+    return round(min(math.hypot(a['x'] - b['x'], a['y'] - b['y'])
+                     for a, b in itertools.combinations(pts, 2)), 1)
+
+
+def unreachable_in(obs, assignments):
+    """nav_bounds 를 벗어난 배정이 있으면 그 사유를 돌려준다(없으면 None).
+
+    validate() 는 스키마만 본다. 도달 가능성은 별도다 — 범위 밖 목표는 Nav2 가
+    "goal is off the global costmap" 으로 거절해 그 주기가 통째로 낭비된다.
+    """
+    by_r = {r['id']: r for r in obs['robots']}
+    by_f = {f['id']: f for f in obs['frontiers']}
+    for a in assignments:
+        r, f = by_r.get(a['robot']), by_f.get(a['frontier_id'])
+        if r is None or f is None:
+            continue
+        if not reachable(r, f):
+            return (f"{a['robot']} 는 후보 {a['frontier_id']}"
+                    f"({f['x']:.1f},{f['y']:.1f}) 에 경로를 못 만든다")
+    return None
+
+
+def assign_by_llm(obs, chat, min_separation=0.0, retries=3, on_retry=None):
+    """LLM 에게 배정을 맡긴다. **베이스라인과 같은 관측·같은 반환 스키마**를 쓴다.
+
+    `chat` 은 `prompt -> 응답 문자열` 콜러블이다. 이 모듈을 ROS 와 openai 양쪽에서
+    떼어 놓기 위한 이음매다 — 덕분에 가짜 chat 으로 단위 검증이 된다.
+
+    🚨 **실패하면 거리 베이스라인으로 물러난다.** 실측에서 스키마 위반이 드물지
+       않았다(빈 JSON, 범위 밖 id, 응답 잘림). 탐사가 통째로 멈추는 것보다
+       베이스라인으로라도 도는 편이 낫고, 무엇보다 **폴백 횟수 자체가 비교
+       지표**다 — LLM 이 얼마나 자주 쓸 수 없는 답을 내는지가 증류의 난이도다.
+
+    반환에 `llm_failures`(이번 주기에 버린 응답 수)와 `fell_back` 을 담는다.
+    """
+    prompt = ALLOC_PROMPT.format(
+        obs=json.dumps(obs, ensure_ascii=False, indent=2),
+        min_sep=min_separation)
+
+    failures = []
+    for attempt in range(max(1, retries)):
+        try:
+            ans = json.loads(chat(prompt))
+            got = ans.get('assignments')
+            if not isinstance(got, list) or not got:
+                raise ValueError(f'assignments 가 비었다: {str(ans)[:80]}')
+            bad = validate(obs, got) or unreachable_in(obs, got)
+            if bad:
+                raise ValueError(bad)
+        except Exception as exc:                      # noqa: BLE001
+            failures.append(f'{type(exc).__name__}: {exc}')
+            if on_retry is not None:
+                on_retry(attempt + 1, retries, failures[-1])
+            continue
+
+        sep = _separation_of(obs, got)
+        return {
+            'assignments': [{'robot': a['robot'], 'frontier_id': a['frontier_id']}
+                            for a in got],
+            'total_cost': assignment_cost(obs, got),
+            'method': 'llm',
+            'degraded': bool(min_separation > 0.0 and sep is not None
+                             and sep < min_separation),
+            'achieved_separation': sep,
+            'reason': str(ans.get('reason', ''))[:200],
+            'llm_failures': len(failures),
+            'fell_back': False,
+        }
+
+    out = assign_by_distance(obs, min_separation=min_separation)
+    out['method'] = 'llm(폴백:distance)'
+    out['llm_failures'] = len(failures)
+    out['fell_back'] = True
+    out['reason'] = f'LLM {retries}회 실패 — {failures[-1] if failures else "?"}'
+    return out

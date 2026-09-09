@@ -217,14 +217,23 @@ services:
   # 기본적으로 자동 기동하지 않는다 (profiles). 손으로 목표를 주며 실험할 때 켜져 있으면
   # 서로 덮어쓰기 때문이다. 켜려면:
   #     docker compose -f docker-configs/mac/docker-compose.yml --profile explore up -d
+  #
+  # 전략은 환경변수로 갈아 낀다 (기본 distance):
+  #     EXPLORE_STRATEGY=llm EXPLORE_DATASET=/tmp/alloc.jsonl \
+  #       docker compose -f docker-configs/mac/docker-compose.yml --profile explore up -d explorer
+  # llm 은 위 anchor 의 NVIDIA_API_KEY 를 쓴다. 키가 없거나 응답이 스키마를
+  # 어기면 매 주기 거리 베이스라인으로 물러나므로 탐사가 멈추지는 않는다.
   explorer:
     <<: *mac-common
     container_name: explorer_mac
     profiles: ["explore"]
     restart: unless-stopped
+    # 🚨 launch 인자는 반드시 **한 줄**로 둔다. YAML 접힘 스칼라(>)는 더 깊게 들여쓴
+    #    줄의 줄바꿈을 보존하므로, 인자를 줄바꿈해 적으면 bash 가 `ros2 launch` 를
+    #    인자 없이 실행하고 `strategy:=llm` 을 별도 명령으로 취급한다.
+    #    (실측: 노드가 조용히 기본값 distance/30초로 떴다 — 에러가 안 난다)
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
-               ros2 launch webots_goal_bridge allocator.launch.py
-                 strategy:=distance min_separation:=15.0"
+               ros2 launch webots_goal_bridge allocator.launch.py strategy:=${EXPLORE_STRATEGY:-distance} period:=${EXPLORE_PERIOD:-30.0} min_separation:=${EXPLORE_MIN_SEP:-15.0} dataset_path:=${EXPLORE_DATASET:-}"
     depends_on:
       - master

@@ -1,18 +1,24 @@
-"""전역 지도에서 프론티어를 뽑아 **어느 로봇이 어디로 갈지** 배정하는 master 노드.
+"""전역 지도에서 프론티어를 뽑아 **어느 로봇이 어디로 갈지** 배정한다 (explorer 컨테이너).
 
-왜 master 인가
---------------
+왜 중앙집중인가, 왜 별도 컨테이너인가
+------------------------------------
 다중 로봇 할당은 원리적으로 중앙집중이다. 다른 로봇이 어디로 가는지 모르면 겹침을
-막을 수 없다. 그래서 로봇 컨테이너가 아니라 전역 지도(`/map_merged`)를 이미 만들고 있는
-master 에 둔다 — `map_merger`, `sim_clock_bridge` 와 같은 자리다.
+막을 수 없다. 그래서 로봇 컨테이너가 아니라 전역 지도(`/map_merged`)를 구독하는
+한 곳에서 돈다.
+
+다만 master 안이 아니라 **별도 컨테이너(explorer)** 다. master 는 맵 병합·RViz·시계라는
+관제 기반이고, 탐사 할당은 그 위에 얹히는 정책이라 실험 중 자주 바꿔 낀다
+(거리 기준 ↔ LLM). 같이 두면 전략 하나 바꾸려고 RViz 와 맵 병합까지 재시작해야 한다.
 
     /map_merged ─┐
     /{ns}/odom   ├─▶ 프론티어 검출 ─▶ **할당** ─▶ /{ns}/goal_pose
     /{ns}/map   ─┘                      ▲
-                                        └── 여기가 LLM 이 대체할 자리다
+                                        └── strategy 가 여기를 갈아 끼운다
 
-지금은 거리 기준 최적 할당(베이스라인)이 들어 있다. `strategy` 파라미터로 갈아 끼운다.
-LLM 할당이 이 베이스라인을 못 이기면 증류할 것이 없다는 뜻이므로, 비교 기준을 먼저 둔다.
+`strategy=distance` 는 거리 합을 최소화하는 정확한 할당(베이스라인),
+`strategy=llm` 은 같은 관측을 LLM 에게 주고 배정을 받는다. **llm 일 때도 매 주기
+베이스라인을 같이 계산해 짝지어 기록한다** — 둘이 같은 답을 내는 주기는 증류할 신호가
+없다는 뜻이고, 갈리는 주기가 곧 학습 대상이다.
 
 편대를 어떻게 아는가
 --------------------
@@ -34,17 +40,22 @@ LLM 할당이 이 베이스라인을 못 이기면 증류할 것이 없다는 �
 
 import json
 import math
+import os
+import time
 
 import numpy as np
 import rclpy
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import OccupancyGrid, Odometry
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
 from std_msgs.msg import String
 
 from webots_goal_bridge.frontier_allocator import (assign_by_distance,
+                                                   assign_by_llm,
                                                    build_observation)
 from webots_goal_bridge.llm_goal_assigner import extract_frontiers
 
@@ -86,6 +97,19 @@ class FrontierAllocatorNode(Node):
         self.declare_parameter('progress_min', 1.0)
         # 증류용 학습 데이터. 비우면 안 쓴다.
         self.declare_parameter('dataset_path', '')
+        # strategy=llm 일 때만 쓴다. OpenAI 호환이면 무엇이든 붙는다 —
+        # NVIDIA NIM / 로컬 vLLM / Ollama. base_url 과 model 만 바꾸면 된다.
+        self.declare_parameter('base_url', 'https://integrate.api.nvidia.com/v1')
+        self.declare_parameter('model', 'nvidia/nemotron-3-super-120b-a12b')
+        self.declare_parameter('api_key_env', 'NVIDIA_API_KEY')
+        # 🚨 추론(reasoning) 모델은 예산을 추론에 먼저 쓴다. 작게 주면 본문이 빈 채로
+        #    finish_reason=length 가 돌아온다 — 실측: nemotron-3-super 에 768 을 주면
+        #    5/5 전부 빈 응답이었고, 3000 을 줘도 '{}' 였다. 넉넉히 준다.
+        self.declare_parameter('max_tokens', 2048)
+        # Nemotron 계열의 추론 토글. 'detailed thinking off' 면 추론이 짧아져
+        # 같은 답을 **29초 -> 9초**로 낸다(실측). 다른 제공자면 빈 문자열로 둔다.
+        self.declare_parameter('system_prompt', 'detailed thinking off')
+        self.declare_parameter('llm_retries', 3)
 
         self.period = float(self.get_parameter('period').value)
         self.strategy = str(self.get_parameter('strategy').value)
@@ -107,14 +131,92 @@ class FrontierAllocatorNode(Node):
         self.last_pos = {}
         # 🚨 분산 포기(폴백) 집계. 이게 곧 비교 지표다 — 베이스라인이 몇 번이나
         #    "분리 제약을 만족하는 조합이 없어" 물러났는지가 LLM 이 개선할 여지다.
-        self.stats = {'rounds': 0, 'degraded': 0, 'sep_sum': 0.0, 'sep_n': 0}
+        #
+        # llm 전략일 때는 **매 주기 베이스라인도 같이 계산**해 짝지어 기록한다.
+        # 완전탐색이 132가지뿐이라 공짜에 가깝고, 같은 관측에서 둘이 무엇을 다르게
+        # 골랐는지가 곧 "증류할 것이 있는가" 에 대한 답이다.
+        self.stats = {'rounds': 0, 'degraded': 0, 'sep_sum': 0.0, 'sep_n': 0,
+                      'llm_fail': 0, 'fell_back': 0,
+                      'agree': 0, 'llm_better': 0, 'base_better': 0}
+
+        self.client = None
+        if self.strategy == 'llm':
+            self._make_client()
 
         self.create_subscription(OccupancyGrid, '/map_merged', self._on_map, MAP_QOS)
         self.create_subscription(String, '/robot_registry', self._on_registry, 10)
-        self.create_timer(self.period, self.cycle)
+        # 🚨 주기 처리를 **구독과 다른 콜백 그룹**에 둔다. llm 전략은 한 번 물어보는 데
+        #    12~65초가 걸리는데(실측, nemotron-3-super), 같은 그룹이면 그동안 odom/map
+        #    구독이 통째로 멈춰 다음 주기가 수십 초 묵은 위치로 배정하게 된다.
+        #    main() 의 MultiThreadedExecutor 와 짝이다 — 한쪽만 바꾸면 효과가 없다.
+        self.create_timer(self.period, self.cycle,
+                          callback_group=MutuallyExclusiveCallbackGroup())
         self.get_logger().info(
             f'프론티어 할당기 시작 | 전략 {self.strategy} | 주기 {self.period}s | '
             f'최소 목표거리 {self.min_goal_dist} m | 최소 분리 {self.min_sep} m')
+
+    # ----------------------------------------------------------------- LLM
+    def _make_client(self):
+        """OpenAI 호환 클라이언트. 실패해도 노드는 뜨고 베이스라인으로 돈다.
+
+        🚨 여기서 죽으면 안 된다. 키가 없거나 openai 패키지가 빠진 이미지에서
+           할당기가 통째로 안 뜨면, 원인이 "탐사가 안 된다" 로만 보인다.
+        """
+        key_env = str(self.get_parameter('api_key_env').value)
+        api_key = os.environ.get(key_env, '')
+        if not api_key:
+            self.get_logger().error(
+                f'{key_env} 가 비어 있다 — LLM 전략을 켰지만 매 주기 베이스라인으로 '
+                f'물러난다. compose 의 environment 에 키가 전달됐는지 확인할 것')
+            return
+        try:
+            from openai import OpenAI       # 지연 임포트 — 키가 없어도 노드는 뜬다
+            self.client = OpenAI(
+                base_url=str(self.get_parameter('base_url').value), api_key=api_key)
+        except Exception as exc:            # noqa: BLE001
+            self.get_logger().error(f'LLM 클라이언트 생성 실패: {exc}')
+            return
+        self.get_logger().info(
+            f'LLM 할당 준비 | {self.get_parameter("model").value} @ '
+            f'{self.get_parameter("base_url").value}')
+
+    def _chat(self, prompt):
+        """assign_by_llm 에 넘길 이음매. 응답 본문 문자열만 돌려준다.
+
+        🚨 추론 모델은 예산을 추론에 먼저 쓴다. 다 쓰면 본문이 **빈 문자열**로 오고
+           finish_reason 이 'length' 가 된다. 그대로 두면 호출부가 JSONDecodeError
+           만 보게 되어 원인이 "모델이 이상한 답을 한다" 로 오독된다. 여기서 잘림을
+           구분해 말해 주고, 한 번은 예산을 두 배로 늘려 다시 물어본다.
+
+           예산을 키우는 것이 만능은 아니다 — 실측(후보 12개, 3회씩):
+             2048 → 3/3 성공, 평균 17.6초
+             4096 → 3/3 성공, 평균 24.5초
+             6144 → 2/3 성공, 평균 83.1초 ('length' 1회)
+           추론 길이 자체가 실행마다 크게 흔들려서, 예산을 키우면 더 길게 헤매다
+           같은 벽에 부딪히기도 한다. 그래서 기본값은 2048 로 두고 한 번만 늘린다.
+        """
+        sys_msg = str(self.get_parameter('system_prompt').value).strip()
+        messages = ([{'role': 'system', 'content': sys_msg}] if sys_msg else []) \
+            + [{'role': 'user', 'content': prompt}]
+        budget = int(self.get_parameter('max_tokens').value)
+        for factor in (1, 2):
+            resp = self.client.chat.completions.create(
+                model=str(self.get_parameter('model').value),
+                messages=messages,
+                response_format={'type': 'json_object'},
+                max_tokens=budget * factor,
+                temperature=0.2)
+            choice = resp.choices[0]
+            body = (choice.message.content or '').strip()
+            if body:
+                return body
+            if choice.finish_reason != 'length':
+                raise ValueError(
+                    f'본문이 비었다 (finish_reason={choice.finish_reason})')
+            self.get_logger().warn(
+                f'추론이 예산 {budget * factor} 토큰을 다 써 본문이 잘렸다'
+                + (' — 두 배로 다시 물어본다' if factor == 1 else ''))
+        raise ValueError(f'예산 {budget * 2} 토큰으로도 본문이 안 나왔다')
 
     # ------------------------------------------------------------- 편대 파악
     def _on_registry(self, msg):
@@ -234,8 +336,27 @@ class FrontierAllocatorNode(Node):
 
         obs = build_observation(grid, info.origin.position.x, info.origin.position.y,
                                 info.resolution, robots, fr)
-        result = assign_by_distance(obs, min_separation=self.min_sep)  # ← LLM 이 대체할 자리
+        # 베이스라인은 **언제나** 계산한다. llm 전략일 때도 마찬가지다 — 완전탐색이
+        # 132가지뿐이라 비용이 없고, 같은 관측에서 둘이 무엇을 다르게 골랐는지가
+        # 곧 증류 가치의 증거다. 짝지어 데이터셋에 남긴다.
+        baseline = assign_by_distance(obs, min_separation=self.min_sep)
+        if self.strategy == 'llm' and self.client is not None:
+            t0 = time.monotonic()
+            result = assign_by_llm(
+                obs, self._chat, min_separation=self.min_sep,
+                retries=int(self.get_parameter('llm_retries').value),
+                on_retry=lambda i, n, msg: self.get_logger().warn(
+                    f'LLM 응답 불량 ({i}/{n}) — {msg}'))
+            took = time.monotonic() - t0
+            if took > self.period:
+                # 벽시계 기준이다. 주기를 넘기면 배정이 묵은 위치로 나가기 시작한다.
+                self.get_logger().warn(
+                    f'LLM 응답에 {took:.0f}초 걸렸다 — 주기 {self.period}초를 넘겼다. '
+                    f'period 를 늘리거나 더 작은 모델을 쓸 것')
+        else:
+            result = baseline
 
+        self._compare(result, baseline)
         self.stats['rounds'] += 1
         sep = result.get('achieved_separation')
         if sep is not None:
@@ -262,15 +383,21 @@ class FrontierAllocatorNode(Node):
                 f'[{ns}] 목표 ({tgt[0]:.1f}, {tgt[1]:.1f})'
                 + (f' -> 경유점 ({gx:.1f}, {gy:.1f})'
                    if abs(gx - tgt[0]) + abs(gy - tgt[1]) > 0.1 else ''))
-        self._record(obs, result)
+        self._record(obs, result, baseline)
         if self.stats['rounds'] % 20 == 0:
             avg = (self.stats['sep_sum'] / self.stats['sep_n']
                    if self.stats['sep_n'] else 0.0)
-            self.get_logger().info(
-                f"집계: {self.stats['rounds']}주기 | 분리 완화 "
-                f"{self.stats['degraded']}회 "
-                f"({100.0 * self.stats['degraded'] / self.stats['rounds']:.0f}%) | "
-                f"평균 확보 분리 {avg:.1f} m (요구 {self.min_sep} m)")
+            line = (f"집계: {self.stats['rounds']}주기 | 분리 완화 "
+                    f"{self.stats['degraded']}회 "
+                    f"({100.0 * self.stats['degraded'] / self.stats['rounds']:.0f}%) | "
+                    f"평균 확보 분리 {avg:.1f} m (요구 {self.min_sep} m)")
+            if self.strategy == 'llm':
+                line += (f" || LLM 폴백 {self.stats['fell_back']}회 "
+                         f"(버린 응답 {self.stats['llm_fail']}건) | "
+                         f"베이스라인과 동일 {self.stats['agree']}회 | "
+                         f"분리 우위 LLM {self.stats['llm_better']} : "
+                         f"{self.stats['base_better']} 베이스라인")
+            self.get_logger().info(line)
 
     def _update_progress(self, ns, r):
         """진전이 없으면 센다. 규칙 3 — 포기 조건의 근거."""
@@ -300,14 +427,53 @@ class FrontierAllocatorNode(Node):
         self.target[ns] = (f['x'], f['y'])
         return self.target[ns]
 
-    def _record(self, obs, result):
+    def _compare(self, result, baseline):
+        """LLM 과 베이스라인이 같은 관측에서 무엇을 다르게 골랐는가.
+
+        🚨 잣대는 거리 합이 아니라 **확보한 분리**를 먼저 본다. 거리 합만 보면
+           베이스라인이 이기는 게 당연하다 — 베이스라인은 바로 그 값을 최소화하도록
+           짜였으니 자기 잣대로 재는 셈이다. LLM 이 기여할 수 있는 자리는
+           "거리를 조금 더 쓰더라도 두 대를 더 멀리 떼어 놓는" 선택이다.
+        """
+        if result is baseline:
+            return
+        if result.get('fell_back'):
+            self.stats['fell_back'] += 1
+        self.stats['llm_fail'] += int(result.get('llm_failures', 0))
+
+        a = {(x['robot'], x['frontier_id']) for x in result['assignments']}
+        b = {(x['robot'], x['frontier_id']) for x in baseline['assignments']}
+        if a == b:
+            self.stats['agree'] += 1
+            return
+        rs, bs = result.get('achieved_separation'), baseline.get('achieved_separation')
+        if rs is None or bs is None:
+            return
+        if rs > bs:
+            self.stats['llm_better'] += 1
+        elif bs > rs:
+            self.stats['base_better'] += 1
+        self.get_logger().info(
+            f'판단 갈림 | LLM 분리 {rs} m (거리합 {result.get("total_cost")}) vs '
+            f'베이스라인 {bs} m (거리합 {baseline.get("total_cost")})'
+            + (f' | LLM 근거: {result.get("reason", "")[:60]}'
+               if result.get('reason') else ''))
+
+    def _record(self, obs, result, baseline=None):
+        """관측 + 두 전략의 답을 한 줄에 짝지어 남긴다.
+
+        증류 학습은 이 파일을 그대로 먹는다. 교사(LLM)의 답만 남기면 "교사가 옳았나"
+        를 나중에 되물을 수 없으므로, **같은 관측에 대한 베이스라인의 답도 함께**
+        남긴다. 둘이 같은 주기는 학습 신호가 없다는 뜻이기도 하다.
+        """
         if not self.dataset_path:
             return
+        row = {'observation': obs, 'result': result, 'stats': dict(self.stats)}
+        if baseline is not None and baseline is not result:
+            row['baseline'] = baseline
         try:
             with open(self.dataset_path, 'a', encoding='utf-8') as fh:
-                fh.write(json.dumps({'observation': obs, 'result': result,
-                                     'stats': dict(self.stats)},
-                                    ensure_ascii=False) + '\n')
+                fh.write(json.dumps(row, ensure_ascii=False) + '\n')
         except OSError as exc:
             self.get_logger().warn(f'데이터셋 기록 실패: {exc}')
 
@@ -315,8 +481,11 @@ class FrontierAllocatorNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = FrontierAllocatorNode()
+    # 스레드 2개면 충분하다 — 주기 처리 1개 + 구독 전부 1개.
+    executor = MultiThreadedExecutor(num_threads=2)
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:

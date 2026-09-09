@@ -33,6 +33,15 @@ def generate_launch_description():
         ('min_separation', '15.0', '배정된 후보끼리 최소 간격. 못 맞추면 단계적으로 낮춘다'),
         ('giveup_rounds', '3', '이만큼 진전이 없으면 목표를 버린다'),
         ('dataset_path', '', '증류용 학습 데이터 JSONL 경로. 비우면 안 쓴다'),
+        # strategy:=llm 일 때만 쓴다. OpenAI 호환이면 무엇이든 붙는다 —
+        # NVIDIA NIM / 로컬 vLLM / Ollama. 키는 api_key_env 가 가리키는 환경변수에서 읽는다.
+        ('base_url', 'https://integrate.api.nvidia.com/v1', 'OpenAI 호환 엔드포인트'),
+        ('model', 'nvidia/nemotron-3-super-120b-a12b', '교사 모델 이름'),
+        ('api_key_env', 'NVIDIA_API_KEY', 'API 키를 담은 환경변수 이름'),
+        ('max_tokens', '2048', '응답 상한. 추론 모델은 예산을 추론에 먼저 쓰므로 넉넉히'),
+        ('system_prompt', 'detailed thinking off',
+         'Nemotron 추론 토글. 다른 제공자면 빈 문자열로'),
+        ('llm_retries', '3', '스키마 위반 시 재시도 횟수. 다 실패하면 베이스라인으로 폴백'),
     ]
     return LaunchDescription(
         [DeclareLaunchArgument(n, default_value=d, description=desc)
@@ -50,5 +59,11 @@ def generate_launch_description():
                 'min_separation': LaunchConfiguration('min_separation'),
                 'giveup_rounds': LaunchConfiguration('giveup_rounds'),
                 'dataset_path': LaunchConfiguration('dataset_path'),
+                'base_url': LaunchConfiguration('base_url'),
+                'model': LaunchConfiguration('model'),
+                'api_key_env': LaunchConfiguration('api_key_env'),
+                'max_tokens': LaunchConfiguration('max_tokens'),
+                'system_prompt': LaunchConfiguration('system_prompt'),
+                'llm_retries': LaunchConfiguration('llm_retries'),
             }],
         )])
