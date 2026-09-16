@@ -525,6 +525,8 @@ data/distill/
 
 ### 데이터셋으로 내보내기
 
+학습·평가·서빙까지의 절차는 [13장](13_DISTILLATION.md)에 따로 있다.
+
 ```bash
 python3 src/webots_goal_bridge/scripts/export_distill.py                       # raw → export
 python3 src/webots_goal_bridge/scripts/export_distill.py --include-reasoning   # 추론까지 가르칠 때

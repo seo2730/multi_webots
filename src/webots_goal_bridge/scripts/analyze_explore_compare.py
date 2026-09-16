@@ -29,6 +29,23 @@ def t_at(cov, pct):
     return None
 
 
+def val_at(cov, pct, key):
+    """커버리지가 pct 를 처음 넘는 지점에서 key 값(선형 보간). 없으면 None."""
+    prev = None
+    for r in cov:
+        if r['pct'] >= pct:
+            v = key(r)
+            if prev is None or r['pct'] == prev['pct']:
+                return v
+            pv = key(prev)
+            if v is None or pv is None:
+                return v
+            f = (pct - prev['pct']) / (r['pct'] - prev['pct'])
+            return pv + f * (v - pv)
+        prev = r
+    return None
+
+
 def dt(cov, pct):
     a, b = t_at(cov, BASE), t_at(cov, pct)
     return None if a is None or b is None else b - a
@@ -88,8 +105,19 @@ def summarize(tag, cov_p, raw_p):
             rs, bs = r['result'].get('achieved_separation'), b.get('achieved_separation')
             better += (rs is not None and bs is not None and rs > bs)
     calls = [c for r in rounds for c in ((r.get('teacher') or {}).get('calls') or [])]
+    # 🚨 목표 수·이동거리는 **같은 커버리지(90%)에서** 재야 비교가 된다. 시행마다 끝나는
+    #    커버리지가 달라서 최종값끼리 비교하면 더 멀리 간 시행이 손해를 본다.
+    #    이동거리는 커버리지 곡선에서 보간하고, 목표 수는 그 시각(t_abs)까지의 누적을 쓴다.
+    tgt90 = trav90 = None
+    if cov and 't_abs' in cov[0]:
+        t90_abs = val_at(cov, 90.0, lambda r: r.get('t_abs'))
+        trav90 = val_at(cov, 90.0, lambda r: sum((r.get('dist') or {}).values()))
+        if t90_abs is not None and rounds:
+            done = [r for r in rounds if r.get('t_sim') is not None and r['t_sim'] <= t90_abs]
+            tgt90 = max((r['stats'].get('new_targets', 0) for r in done), default=0)
     last = cov[-1] if cov else {}
     return {
+        'targets90': tgt90, 'travel90': trav90,
         'tag': tag, 'strategy': strategy_of(tag, meta), 'model': meta.get('model'),
         'start_pct': cov[0]['pct'] if cov else None, 'final_pct': last.get('pct'),
         'final_t': last.get('t'), 'stop': last.get('stop_reason'),
@@ -128,13 +156,13 @@ def main(argv=None):
         print('시행 없음 —', a.root); return
     print(f'도달 시각 = 내부 {BASE:.0f}% 통과 순간부터 잰 초 (선형 보간)\n')
     print(f"{'시행':28s} {'시작%':>5s} {'최종%':>5s} " + ' '.join(f"{'t'+str(p):>5s}" for p in THR)
-          + f" {'새목표':>5s} {'포기':>4s} {'주기':>4s} {'LLM s/회':>8s} {'늦음':>4s} {'폴백':>4s} {'잘림':>6s}  종료")
+          + f" {'점@90':>5s} {'m@90':>6s} {'새목표':>5s} {'포기':>4s} {'주기':>4s} {'LLM s/회':>8s} {'늦음':>4s} {'폴백':>4s} {'잘림':>6s}  종료")
     for r in res:
         avg = r['llm_sec'] / r['llm_calls'] if r['llm_calls'] else None
         trunc = f"{r['truncated']}/{r['http_calls']}" if r['http_calls'] else '—'
         print(f"{label(r['tag'])[:28]:28s} {fmt(r['start_pct'],'{:.1f}'):>5s} {fmt(r['final_pct'],'{:.1f}'):>5s} "
               + ' '.join(f"{fmt(r['t'+str(p)]):>5s}" for p in THR)
-              + f" {fmt(r['new_targets']):>5s} {fmt(r['giveups']):>4s} {fmt(r['rounds']):>4s}"
+              + f" {fmt(r['targets90']):>5s} {fmt(r['travel90']):>6s} {fmt(r['new_targets']):>5s} {fmt(r['giveups']):>4s} {fmt(r['rounds']):>4s}"
               + f" {fmt(avg,'{:.1f}'):>8s} {fmt(r['late']):>4s} {fmt(r['fell_back']):>4s} {trunc:>6s}  {r['stop'] or ''}")
     print('\n전략별 (평균 ± 표준편차, n = 해당 지표가 있는 시행 수)')
     for s in sorted({r['strategy'] for r in res}):
@@ -147,7 +175,8 @@ def main(argv=None):
                     + f' (n={len(v)})')
         print(f"  {s}: 시행 {len(g)}")
         print(f"    최종 {ms('final_pct','{:.1f}')}% | " + ' | '.join(f"t{p} {ms('t'+str(p))}s" for p in THR))
-        print(f"    새 목표 {ms('new_targets','{:.1f}')} | 포기 {ms('giveups','{:.1f}')} | 주기 {ms('rounds','{:.1f}')}")
+        print(f"    ⭐ 90% 까지 — 탐사점 {ms('targets90','{:.1f}')} 개 · 이동 {ms('travel90','{:.0f}')} m")
+        print(f"    새 목표(끝까지) {ms('new_targets','{:.1f}')} | 포기 {ms('giveups','{:.1f}')} | 주기 {ms('rounds','{:.1f}')}")
         if s == 'llm':
             print(f"    판단 갈림 {sum(r['diff'] for r in g)} (분리 우위 {sum(r['sep_better'] for r in g)}) | "
                   f"늦은 주기 {sum(r['late'] or 0 for r in g)} | 폴백 {sum(r['fell_back'] or 0 for r in g)} | "
