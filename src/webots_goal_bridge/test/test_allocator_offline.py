@@ -319,9 +319,44 @@ def test_record_and_export():
           s3['totals']['sft_train'] == 0 and s3['totals']['sft_val'] == 2)
 
 
+def test_async_llm():
+    """비동기 계획: 준비되기 전엔 None(기존 목표 유지), 준비되면 그 관측째로 돌려준다."""
+    from concurrent.futures import Future
+    node = os.path.join(SRC, 'frontier_allocator_node.py')
+    N = shell(['_async_llm'], node)
+    n = N()
+    n.get_logger = lambda: Log()
+    n._pending = None
+    futures = []
+
+    class Pool:
+        def submit(self, fn, *a):
+            f = Future()
+            futures.append((f, a))
+            return f
+
+    n._pool = Pool()
+    n._llm_call = lambda o, f: None      # 제출 시점에 속성으로 잡힌다 (여기선 안 불린다)
+    obs, fr = {'tag': 'obs1'}, [{'id': 0}]
+    check('첫 주기: 제출하고 None (로봇은 기존 목표 유지)',
+          n._async_llm(obs, fr) is None and len(futures) == 1)
+    check('생각 중에는 겹쳐 묻지 않는다',
+          n._async_llm({'tag': 'obs2'}, fr) is None and len(futures) == 1)
+    f, args = futures[0]
+    check('제출된 것은 그때의 관측', args == (obs, fr))
+    f.set_result({'obs': obs, 'fr': fr, 'result': {'method': 'llm'}, 'teacher': {}})
+    snap = n._async_llm({'tag': 'obs3'}, fr)
+    check('준비되면 **제출 당시 관측**과 함께 돌려준다', snap is not None and snap['obs'] is obs)
+    check('받아간 뒤 다음 주기에 새로 제출', n._async_llm({'tag': 'obs4'}, fr) is None
+          and len(futures) == 2)
+    futures[1][0].set_exception(RuntimeError('boom'))
+    check('작업이 예외로 끝나면 None (탐사는 계속)', n._async_llm(obs, fr) is None)
+
+
 def main():
     for fn in (test_extract_frontiers, test_opt_and_bounds, test_clamp_and_targets,
-               test_chat_truncation, test_assign_by_llm, test_record_and_export):
+               test_chat_truncation, test_assign_by_llm, test_async_llm,
+               test_record_and_export):
         print(f'\n--- {fn.__name__} ---')
         fn()
     print('\n전부 통과' if not FAILS else f'\n실패 {len(FAILS)}건: {FAILS}')

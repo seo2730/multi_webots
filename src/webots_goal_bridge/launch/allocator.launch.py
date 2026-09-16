@@ -48,6 +48,8 @@ def generate_launch_description():
         ('system_prompt', 'detailed thinking off',
          'Nemotron 추론 토글. 다른 제공자면 빈 문자열로'),
         ('llm_retries', '3', '스키마 위반 시 재시도 횟수. 다 실패하면 베이스라인으로 폴백'),
+        ('llm_async', 'true',
+         '교사가 생각하는 동안 로봇을 세우지 않는다. false 면 주기가 호출을 기다린다'),
     ]
     return LaunchDescription(
         [DeclareLaunchArgument(n, default_value=d, description=desc)
@@ -79,5 +81,6 @@ def generate_launch_description():
                 'max_tokens': LaunchConfiguration('max_tokens'),
                 'system_prompt': LaunchConfiguration('system_prompt'),
                 'llm_retries': LaunchConfiguration('llm_retries'),
+                'llm_async': LaunchConfiguration('llm_async'),
             }],
         )])

@@ -43,6 +43,7 @@ import math
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import rclpy
@@ -147,6 +148,11 @@ class FrontierAllocatorNode(Node):
         # 같은 답을 **29초 -> 9초**로 낸다(실측). 다른 제공자면 빈 문자열로 둔다.
         self.declare_parameter('system_prompt', 'detailed thinking off')
         self.declare_parameter('llm_retries', 3)
+        # 🚨 비동기 계획. 교사가 생각하는 동안 **로봇을 세우지 않는다.**
+        #    동기(false)로 두면 주기(60초)보다 긴 호출(실측 103~176초) 때문에 로봇이 목표를
+        #    다 쓰고 서 있게 되고, 탐사 성능이 판단 품질이 아니라 지연을 재게 된다.
+        #    true 면 답이 오는 주기에만 목표를 갱신하고, 그 사이에는 기존 목표를 유지한다.
+        self.declare_parameter('llm_async', True)
 
         self.period = float(self.get_parameter('period').value)
         self.strategy = str(self.get_parameter('strategy').value)
@@ -159,6 +165,7 @@ class FrontierAllocatorNode(Node):
         self.progress_min = float(self.get_parameter('progress_min').value)
         self.dataset_path = opt_str(self.get_parameter('dataset_path').value)
         self.explore_bounds = parse_bounds(str(self.get_parameter('explore_bounds').value))
+        self.llm_async = bool(self.get_parameter('llm_async').value)
         self.dataset_dir = opt_str(self.get_parameter('dataset_dir').value)
         self.run_tag = re.sub(r'[^A-Za-z0-9_-]+', '-',
                               opt_str(self.get_parameter('run_tag').value))
@@ -191,13 +198,17 @@ class FrontierAllocatorNode(Node):
         # 같은 목표를 주기마다 다시 보내는 것은 세지 않는다.
         self.stats = {'rounds': 0, 'degraded': 0, 'sep_sum': 0.0, 'sep_n': 0,
                       'new_targets': 0, 'giveups': 0,
-                      'llm_fail': 0, 'fell_back': 0,
+                      'llm_fail': 0, 'fell_back': 0, 'pending': 0,
                       'llm_calls': 0, 'llm_sec': 0.0, 'late': 0,
                       'agree': 0, 'llm_better': 0, 'base_better': 0}
 
         self.client = None
+        self._pool = None
+        self._pending = None
         if self.strategy == 'llm':
             self._make_client()
+            self._pool = ThreadPoolExecutor(max_workers=1,
+                                            thread_name_prefix='llm')
 
         self.create_subscription(OccupancyGrid, '/map_merged', self._on_map, MAP_QOS)
         self.create_subscription(String, '/robot_registry', self._on_registry, 10)
@@ -237,7 +248,7 @@ class FrontierAllocatorNode(Node):
             f'LLM 할당 준비 | {self.get_parameter("model").value} @ '
             f'{self.get_parameter("base_url").value}')
 
-    def _chat(self, prompt):
+    def _chat(self, prompt, sink=None):
         """assign_by_llm 에 넘길 이음매. 응답 본문 문자열만 돌려준다.
 
         🚨 추론 모델은 예산을 추론에 먼저 쓴다. 다 쓰면 본문이 **빈 문자열**로 오고
@@ -269,7 +280,7 @@ class FrontierAllocatorNode(Node):
             usage = getattr(resp, 'usage', None)
             # 증류용 원문. 추론 텍스트(reasoning_content)도 남긴다 — 학생에게 추론까지
             # 가르칠지는 내보낼 때 정한다. 잘린 호출도 버리지 않는다.
-            self._calls.append({
+            (self._calls if sink is None else sink).append({
                 'max_tokens': budget * factor,
                 'finish_reason': choice.finish_reason,
                 'content': choice.message.content,
@@ -291,6 +302,44 @@ class FrontierAllocatorNode(Node):
                 f'추론이 예산 {budget * factor} 토큰을 다 써 본문이 잘렸다'
                 + (' — 두 배로 다시 물어본다' if factor == 1 else ''))
         raise ValueError(f'예산 {budget * 2} 토큰으로도 본문이 안 나왔다')
+
+    def _llm_call(self, obs, fr):
+        """교사에게 한 번 물어본다. 결과와 기록을 함께 돌려준다 (동기 경로)."""
+        t0 = time.monotonic()
+        calls, attempts = [], []
+        result = assign_by_llm(
+            obs, lambda p: self._chat(p, calls), min_separation=self.min_sep,
+            retries=int(self.get_parameter('llm_retries').value),
+            on_retry=lambda i, n, msg: self.get_logger().warn(
+                f'LLM 응답 불량 ({i}/{n}) — {msg}'),
+            on_attempt=lambda i, raw, ok, err: attempts.append(
+                {'attempt': i, 'ok': ok, 'error': err, 'raw': raw}))
+        took = time.monotonic() - t0
+        self.stats['llm_calls'] += 1
+        self.stats['llm_sec'] = round(self.stats['llm_sec'] + took, 1)
+        if took > self.period:
+            self.stats['late'] += 1
+            self.get_logger().warn(
+                f'LLM 응답에 {took:.0f}초 걸렸다 — 주기 {self.period}초를 넘겼다')
+        return {'obs': obs, 'fr': fr, 'result': result,
+                'teacher': {'latency_s': round(took, 2), 'calls': calls,
+                            'attempts': attempts}}
+
+    def _async_llm(self, obs, fr):
+        """제출하고 바로 돌아온다. 준비된 주기에만 결과를 준다 (없으면 None).
+
+        한 번에 하나만 돌린다 — 겹쳐 물으면 API 한도만 쓰고 답은 어차피 하나만 쓴다.
+        """
+        if self._pending is not None and self._pending.done():
+            done, self._pending = self._pending, None
+            try:
+                return done.result()
+            except Exception as exc:                  # noqa: BLE001
+                self.get_logger().error(f'LLM 작업이 예외로 끝났다: {exc}')
+                return None
+        if self._pending is None:
+            self._pending = self._pool.submit(self._llm_call, obs, fr)
+        return None
 
     # ------------------------------------------------------------- 편대 파악
     def _on_registry(self, msg):
@@ -418,31 +467,26 @@ class FrontierAllocatorNode(Node):
         # 베이스라인은 **언제나** 계산한다. llm 전략일 때도 마찬가지다 — 완전탐색이
         # 132가지뿐이라 비용이 없고, 같은 관측에서 둘이 무엇을 다르게 골랐는지가
         # 곧 증류 가치의 증거다. 짝지어 데이터셋에 남긴다.
-        baseline = assign_by_distance(obs, min_separation=self.min_sep)
         teacher = None
         if self.strategy == 'llm' and self.client is not None:
-            t0 = time.monotonic()
-            self._calls = []
-            attempts = []
-            result = assign_by_llm(
-                obs, self._chat, min_separation=self.min_sep,
-                retries=int(self.get_parameter('llm_retries').value),
-                on_retry=lambda i, n, msg: self.get_logger().warn(
-                    f'LLM 응답 불량 ({i}/{n}) — {msg}'),
-                on_attempt=lambda i, raw, ok, err: attempts.append(
-                    {'attempt': i, 'ok': ok, 'error': err, 'raw': raw}))
-            took = time.monotonic() - t0
-            self.stats['llm_calls'] += 1
-            self.stats['llm_sec'] = round(self.stats['llm_sec'] + took, 1)
-            teacher = {'latency_s': round(took, 2), 'calls': self._calls,
-                       'attempts': attempts}
-            if took > self.period:
-                self.stats['late'] += 1
-                # 벽시계 기준이다. 주기를 넘기면 배정이 묵은 위치로 나가기 시작한다.
-                self.get_logger().warn(
-                    f'LLM 응답에 {took:.0f}초 걸렸다 — 주기 {self.period}초를 넘겼다. '
-                    f'period 를 늘리거나 더 작은 모델을 쓸 것')
+            snap = (self._async_llm(obs, fr) if self.llm_async
+                    else self._llm_call(obs, fr))
+            if snap is None:
+                # 아직 생각 중이다. **새 배정을 하지 않고 돌아간다** — 로봇은 지난 목표로
+                # 계속 간다. 여기서 세우면 탐사 성능이 판단이 아니라 지연을 재게 된다.
+                self.stats['pending'] += 1
+                self.stats['rounds'] += 1
+                self._record_event('llm_pending')
+                return
+            obs, fr = snap['obs'], snap['fr']
+            result, teacher = snap['result'], snap['teacher']
         else:
+            result = None
+
+        # 🚨 짝지을 베이스라인은 **그 답이 보고 있던 관측**으로 계산해야 비교가 성립한다.
+        #    비동기라 교사의 답은 몇 주기 전 관측에서 나온 것일 수 있다.
+        baseline = assign_by_distance(obs, min_separation=self.min_sep)
+        if result is None:
             result = baseline
 
         self._compare(result, baseline)
@@ -596,6 +640,7 @@ class FrontierAllocatorNode(Node):
             'system_prompt': g('system_prompt'), 'max_tokens': g('max_tokens'),
             'temperature': 0.2, 'llm_retries': g('llm_retries'),
             'period': self.period, 'min_separation': self.min_sep,
+            'llm_async': self.llm_async,
             'min_goal_dist': self.min_goal_dist, 'max_candidates': self.max_cand,
             'giveup_rounds': self.giveup,
             'explore_bounds': list(self.explore_bounds) if self.explore_bounds else None,
