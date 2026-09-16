@@ -486,20 +486,29 @@ class FrontierAllocatorNode(Node):
         # 132가지뿐이라 비용이 없고, 같은 관측에서 둘이 무엇을 다르게 골랐는지가
         # 곧 증류 가치의 증거다. 짝지어 데이터셋에 남긴다.
         teacher = None
+        bootstrap = False
         if self.strategy == 'llm' and self.client is not None:
             snap = (self._async_llm(obs, fr) if self.llm_async
                     else self._llm_call(obs, fr))
             if snap is None:
-                # 아직 생각 중이다. 새 배정은 하지 않되 **기존 목표는 다시 보낸다.**
-                # 🚨 여기서 그냥 돌아가면 목표를 끝낸 로봇이 다음 답까지(실측 135~196초)
-                #    아무 목표 없이 선다 — 동기 방식보다 오히려 나빠진다(실측: 최종
-                #    커버리지 68% vs 85%). 재전송은 Nav2 가 멈추지 않게 하는 것이다.
                 self.stats['pending'] += 1
-                self.stats['rounds'] += 1
-                self._record_event('llm_pending', {'sent': self._resend_targets(robots)})
-                return
-            obs, fr = snap['obs'], snap['fr']
-            result, teacher = snap['result'], snap['teacher']
+                if self.target:
+                    # 아직 생각 중이다. 새 배정은 하지 않되 **기존 목표는 다시 보낸다.**
+                    # 🚨 여기서 그냥 돌아가면 목표를 끝낸 로봇이 다음 답까지(실측 135~196초)
+                    #    아무 목표 없이 선다 — 동기 방식보다 오히려 나빠진다(실측: 최종
+                    #    커버리지 68% vs 85%). 재전송은 Nav2 가 멈추지 않게 하는 것이다.
+                    self.stats['rounds'] += 1
+                    self._record_event('llm_pending',
+                                       {'sent': self._resend_targets(robots)})
+                    return
+                # 아무 목표도 없다 = 첫 답을 기다리는 시동 구간. 그냥 두면 로봇이 20~120초
+                # 놀고 그만큼이 전략 차이로 잘못 읽힌다. 베이스라인으로 시동만 걸고
+                # **bootstrap 으로 표시**해 교사 샘플과 섞이지 않게 한다.
+                bootstrap = True
+                result = None
+            else:
+                obs, fr = snap['obs'], snap['fr']
+                result, teacher = snap['result'], snap['teacher']
         else:
             result = None
 
@@ -550,6 +559,7 @@ class FrontierAllocatorNode(Node):
             'explored': self._explored(grid, info),
             'sent': sent,
             'events': list(self._round_events),
+            'bootstrap': bootstrap,
         })
         if self.stats['rounds'] % 20 == 0:
             avg = (self.stats['sep_sum'] / self.stats['sep_n']
