@@ -30,7 +30,10 @@ C="docker compose -f $REPO/docker-configs/$OS/docker-compose.yml -f $OVR"
 BATCH=${BATCH:-b$(date -u +%Y%m%dT%H%M%SZ)}
 GIT=$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo nogit)
 # 커밋 안 된 변경으로 돌면 이름표의 커밋이 코드를 속인다 — 표시해 둔다
-git -C "$REPO" diff --quiet HEAD -- src docker-configs 2>/dev/null || GIT="${GIT}-dirty"
+# --ignore-submodules=all: 서브모듈의 Webots GUI 상태(.wbproj)까지 dirty 로 잡히면
+# 소스가 깨끗해도 이름표가 늘 -dirty 가 된다
+git -C "$REPO" diff --quiet --ignore-submodules=all HEAD -- src docker-configs 2>/dev/null \
+  || GIT="${GIT}-dirty"
 DATA="$REPO/data/distill"
 
 export EXPLORE_PERIOD=${EXPLORE_PERIOD:-60.0}
