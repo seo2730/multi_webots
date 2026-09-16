@@ -30,6 +30,7 @@ LLM 이 기여할 여지가 없다. 기여하려면 거리에 담기지 않는 �
 축이고, 여기서 LLM 과 베이스라인의 판단이 갈릴 수 있다.
 """
 
+import hashlib
 import itertools
 import json
 import math
@@ -278,6 +279,22 @@ ALLOC_PROMPT = """\
 {{"assignments": [{{"robot": "<id>", "frontier_id": <정수>}}, ...], "reason": "<한 문장>"}}
 """
 
+# 프롬프트 판. **문구를 바꾸면 PROMPT_VERSION 을 올린다.** 증류 데이터에서 판이 섞이면
+# 학생이 보는 입력 분포가 실행마다 달라진다. PROMPT_SHA 는 올리는 걸 잊었을 때의 안전망이다.
+PROMPT_VERSION = 'alloc-v1'
+PROMPT_SHA = hashlib.sha256(ALLOC_PROMPT.encode('utf-8')).hexdigest()[:12]
+
+
+def build_alloc_prompt(obs, min_separation):
+    """교사에게 보내는 사용자 프롬프트 원문. 기록과 호출이 **같은 함수**를 쓴다.
+
+    학생은 이 문자열을 그대로 입력으로 받아야 한다 — 따로 조립하면 공백 하나만 달라도
+    교사가 본 입력과 학생이 배우는 입력이 어긋난다.
+    """
+    return ALLOC_PROMPT.format(
+        obs=json.dumps(obs, ensure_ascii=False, indent=2),
+        min_sep=min_separation)
+
 
 def _separation_of(obs, assignments):
     """배정된 후보들 사이의 최소 거리. 1대 이하면 None."""
@@ -307,7 +324,8 @@ def unreachable_in(obs, assignments):
     return None
 
 
-def assign_by_llm(obs, chat, min_separation=0.0, retries=3, on_retry=None):
+def assign_by_llm(obs, chat, min_separation=0.0, retries=3, on_retry=None,
+                  on_attempt=None):
     """LLM 에게 배정을 맡긴다. **베이스라인과 같은 관측·같은 반환 스키마**를 쓴다.
 
     `chat` 은 `prompt -> 응답 문자열` 콜러블이다. 이 모듈을 ROS 와 openai 양쪽에서
@@ -319,15 +337,19 @@ def assign_by_llm(obs, chat, min_separation=0.0, retries=3, on_retry=None):
        지표**다 — LLM 이 얼마나 자주 쓸 수 없는 답을 내는지가 증류의 난이도다.
 
     반환에 `llm_failures`(이번 주기에 버린 응답 수)와 `fell_back` 을 담는다.
+
+    `on_attempt(attempt, raw, ok, error)` 는 **성공·실패를 가리지 않고** 시도마다 불린다.
+    증류 데이터 기록용이다 — 실패한 원문도 남겨야 교사가 어떤 입력에서 무너지는지 본다.
+    raw 는 응답 원문(호출 자체가 예외면 None).
     """
-    prompt = ALLOC_PROMPT.format(
-        obs=json.dumps(obs, ensure_ascii=False, indent=2),
-        min_sep=min_separation)
+    prompt = build_alloc_prompt(obs, min_separation)
 
     failures = []
     for attempt in range(max(1, retries)):
+        raw = None
         try:
-            ans = json.loads(chat(prompt))
+            raw = chat(prompt)
+            ans = json.loads(raw)
             got = ans.get('assignments')
             if not isinstance(got, list) or not got:
                 raise ValueError(f'assignments 가 비었다: {str(ans)[:80]}')
@@ -336,9 +358,14 @@ def assign_by_llm(obs, chat, min_separation=0.0, retries=3, on_retry=None):
                 raise ValueError(bad)
         except Exception as exc:                      # noqa: BLE001
             failures.append(f'{type(exc).__name__}: {exc}')
+            if on_attempt is not None:
+                on_attempt(attempt + 1, raw, False, failures[-1])
             if on_retry is not None:
                 on_retry(attempt + 1, retries, failures[-1])
             continue
+
+        if on_attempt is not None:
+            on_attempt(attempt + 1, raw, True, None)
 
         sep = _separation_of(obs, got)
         return {

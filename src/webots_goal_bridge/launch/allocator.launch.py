@@ -23,6 +23,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -33,6 +34,11 @@ def generate_launch_description():
         ('min_separation', '15.0', '배정된 후보끼리 최소 간격. 못 맞추면 단계적으로 낮춘다'),
         ('giveup_rounds', '3', '이만큼 진전이 없으면 목표를 버린다'),
         ('dataset_path', '', '증류용 학습 데이터 JSONL 경로. 비우면 안 쓴다'),
+        ('explore_bounds', '',
+         "탐사 범위 'x0,y0,x1,y1' (월드 좌표). 비우면 지도 전체"),
+        ('dataset_dir', '',
+         '증류용 원시 로그 폴더. dataset_path 가 비었을 때 실행마다 파일 하나를 만든다'),
+        ('run_tag', '', '실행 이름표 — 파일명과 meta 에 들어간다. 예: oneroom_in2'),
         # strategy:=llm 일 때만 쓴다. OpenAI 호환이면 무엇이든 붙는다 —
         # NVIDIA NIM / 로컬 vLLM / Ollama. 키는 api_key_env 가 가리키는 환경변수에서 읽는다.
         ('base_url', 'https://integrate.api.nvidia.com/v1', 'OpenAI 호환 엔드포인트'),
@@ -59,6 +65,14 @@ def generate_launch_description():
                 'min_separation': LaunchConfiguration('min_separation'),
                 'giveup_rounds': LaunchConfiguration('giveup_rounds'),
                 'dataset_path': LaunchConfiguration('dataset_path'),
+                # 문자열로 못 박는다. '-37,-37,37,37' 이 숫자 목록으로 추론되면
+                # 선언한 문자열 파라미터와 형이 어긋나 노드가 기동에서 죽는다.
+                'explore_bounds': ParameterValue(
+                    LaunchConfiguration('explore_bounds'), value_type=str),
+                'dataset_dir': ParameterValue(
+                    LaunchConfiguration('dataset_dir'), value_type=str),
+                'run_tag': ParameterValue(
+                    LaunchConfiguration('run_tag'), value_type=str),
                 'base_url': LaunchConfiguration('base_url'),
                 'model': LaunchConfiguration('model'),
                 'api_key_env': LaunchConfiguration('api_key_env'),

@@ -41,6 +41,7 @@
 import json
 import math
 import os
+import re
 import time
 
 import numpy as np
@@ -54,8 +55,10 @@ from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
 from std_msgs.msg import String
 
-from webots_goal_bridge.frontier_allocator import (assign_by_distance,
+from webots_goal_bridge.frontier_allocator import (PROMPT_SHA, PROMPT_VERSION,
+                                                   assign_by_distance,
                                                    assign_by_llm,
+                                                   build_alloc_prompt,
                                                    build_observation)
 from webots_goal_bridge.llm_goal_assigner import extract_frontiers
 
@@ -75,6 +78,32 @@ def robot_type_of(robot_id):
         if robot_id.startswith(prefix):
             return kind
     return 'ugv'
+
+
+def opt_str(value):
+    """선택 문자열 파라미터. '', 'none', 'null' 은 전부 "안 줌" 이다.
+
+    🚨 compose 에서 빈 값을 넘길 수가 없다. `dataset_path:=` 처럼 값이 빈 launch 인자는
+       ros2 launch 가 "malformed launch argument" 로 거부해 컨테이너가 재시작을 반복한다
+       (실측). 그래서 compose 의 기본값은 none 이고, 여기서 빈 값과 같게 취급한다.
+    """
+    v = str(value if value is not None else '').strip()
+    return '' if v.lower() in ('', 'none', 'null') else v
+
+
+def parse_bounds(text):
+    """'x0,y0,x1,y1' -> (x0, y0, x1, y1). 비었으면 None.
+
+    ROS 파라미터를 문자열로 받는 이유: launch 치환을 거친 숫자 배열은 형 추론이
+    엇갈리기 쉽다. 문자열 하나면 compose 환경변수에서 그대로 넘기기도 쉽다.
+    """
+    text = opt_str(text).strip('[]')
+    if not text:
+        return None
+    v = [float(t) for t in text.split(',')]
+    if len(v) != 4 or v[0] >= v[2] or v[1] >= v[3]:
+        raise ValueError(f"explore_bounds 는 'x0,y0,x1,y1' (x0<x1, y0<y1) 이어야 한다: {text}")
+    return tuple(v)
 
 
 class FrontierAllocatorNode(Node):
@@ -97,6 +126,14 @@ class FrontierAllocatorNode(Node):
         self.declare_parameter('progress_min', 1.0)
         # 증류용 학습 데이터. 비우면 안 쓴다.
         self.declare_parameter('dataset_path', '')
+        # 탐사 범위 'x0,y0,x1,y1' (월드 좌표, m). 비우면 지도 전체.
+        # 이 사각형 밖의 프론티어는 후보에서 뺀다 — 예: oneroom 건물 내부만 정찰.
+        self.declare_parameter('explore_bounds', '')
+        # 🧪 증류 데이터. dataset_path 가 비어 있고 dataset_dir 가 있으면 **실행마다 파일 하나**를
+        #    {run_id}.jsonl 로 만든다. 한 파일에 이어 쓰면 실행 경계가 사라져 train/val 을
+        #    실행 단위로 나눌 수 없다 (연속 주기끼리는 거의 같은 관측이라 섞이면 검증이 샌다).
+        self.declare_parameter('dataset_dir', '')
+        self.declare_parameter('run_tag', '')
         # strategy=llm 일 때만 쓴다. OpenAI 호환이면 무엇이든 붙는다 —
         # NVIDIA NIM / 로컬 vLLM / Ollama. base_url 과 model 만 바꾸면 된다.
         self.declare_parameter('base_url', 'https://integrate.api.nvidia.com/v1')
@@ -120,7 +157,22 @@ class FrontierAllocatorNode(Node):
         self.min_sep = float(self.get_parameter('min_separation').value)
         self.giveup = int(self.get_parameter('giveup_rounds').value)
         self.progress_min = float(self.get_parameter('progress_min').value)
-        self.dataset_path = str(self.get_parameter('dataset_path').value).strip()
+        self.dataset_path = opt_str(self.get_parameter('dataset_path').value)
+        self.explore_bounds = parse_bounds(str(self.get_parameter('explore_bounds').value))
+        self.dataset_dir = opt_str(self.get_parameter('dataset_dir').value)
+        self.run_tag = re.sub(r'[^A-Za-z0-9_-]+', '-',
+                              opt_str(self.get_parameter('run_tag').value))
+        self.run_id = (time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) + f'_{self.strategy}'
+                       + (f'_{self.run_tag}' if self.run_tag else ''))
+        if not self.dataset_path and self.dataset_dir:
+            try:
+                os.makedirs(self.dataset_dir, exist_ok=True)
+                self.dataset_path = os.path.join(self.dataset_dir, f'{self.run_id}.jsonl')
+            except OSError as exc:
+                self.get_logger().error(f'증류 데이터 폴더를 못 만든다 — 기록 안 함: {exc}')
+        self._meta_written = False
+        self._calls = []          # 이번 주기 _chat 의 HTTP 호출 원문
+        self._round_events = []   # 이번 주기 포기 등
 
         self.merged = None
         self.pose = {}          # ns -> Pose
@@ -135,8 +187,12 @@ class FrontierAllocatorNode(Node):
         # llm 전략일 때는 **매 주기 베이스라인도 같이 계산**해 짝지어 기록한다.
         # 완전탐색이 132가지뿐이라 공짜에 가깝고, 같은 관측에서 둘이 무엇을 다르게
         # 골랐는지가 곧 "증류할 것이 있는가" 에 대한 답이다.
+        # new_targets 가 "탐사 생성 점" 이다 — 로봇에게 **새로** 내준 목표 수.
+        # 같은 목표를 주기마다 다시 보내는 것은 세지 않는다.
         self.stats = {'rounds': 0, 'degraded': 0, 'sep_sum': 0.0, 'sep_n': 0,
+                      'new_targets': 0, 'giveups': 0,
                       'llm_fail': 0, 'fell_back': 0,
+                      'llm_calls': 0, 'llm_sec': 0.0, 'late': 0,
                       'agree': 0, 'llm_better': 0, 'base_better': 0}
 
         self.client = None
@@ -153,7 +209,8 @@ class FrontierAllocatorNode(Node):
                           callback_group=MutuallyExclusiveCallbackGroup())
         self.get_logger().info(
             f'프론티어 할당기 시작 | 전략 {self.strategy} | 주기 {self.period}s | '
-            f'최소 목표거리 {self.min_goal_dist} m | 최소 분리 {self.min_sep} m')
+            f'최소 목표거리 {self.min_goal_dist} m | 최소 분리 {self.min_sep} m | '
+            f'탐사 범위 {self.explore_bounds or "지도 전체"}')
 
     # ----------------------------------------------------------------- LLM
     def _make_client(self):
@@ -200,6 +257,7 @@ class FrontierAllocatorNode(Node):
             + [{'role': 'user', 'content': prompt}]
         budget = int(self.get_parameter('max_tokens').value)
         for factor in (1, 2):
+            t_call = time.monotonic()
             resp = self.client.chat.completions.create(
                 model=str(self.get_parameter('model').value),
                 messages=messages,
@@ -208,9 +266,25 @@ class FrontierAllocatorNode(Node):
                 temperature=0.2)
             choice = resp.choices[0]
             body = (choice.message.content or '').strip()
-            if body:
-                return body
+            usage = getattr(resp, 'usage', None)
+            # 증류용 원문. 추론 텍스트(reasoning_content)도 남긴다 — 학생에게 추론까지
+            # 가르칠지는 내보낼 때 정한다. 잘린 호출도 버리지 않는다.
+            self._calls.append({
+                'max_tokens': budget * factor,
+                'finish_reason': choice.finish_reason,
+                'content': choice.message.content,
+                'reasoning': getattr(choice.message, 'reasoning_content', None),
+                'latency_s': round(time.monotonic() - t_call, 2),
+                'prompt_tokens': getattr(usage, 'prompt_tokens', None),
+                'completion_tokens': getattr(usage, 'completion_tokens', None),
+            })
+            # 🚨 finish_reason 을 본문보다 **먼저** 본다. 잘렸을 때 본문이 비어서만 오는
+            #    게 아니다 — 추론 텍스트가 본문 자리에 들어온 채 잘리기도 한다(실측:
+            #    max_tokens=256, finish=length, 본문 = 'Okay, the user is asking...').
+            #    본문 유무로 판단하면 그 경우를 정상 응답으로 넘겨 JSON 파싱에서 죽는다.
             if choice.finish_reason != 'length':
+                if body:
+                    return body
                 raise ValueError(
                     f'본문이 비었다 (finish_reason={choice.finish_reason})')
             self.get_logger().warn(
@@ -323,7 +397,7 @@ class FrontierAllocatorNode(Node):
         fr = extract_frontiers(grid, info.origin.position.x, info.origin.position.y,
                                info.resolution, robots[0]['x'], robots[0]['y'],
                                min_cells=self.min_cells, bucket=self.cluster,
-                               max_n=self.max_cand * 4)
+                               max_n=self.max_cand * 4, bounds=self.explore_bounds)
         # 어느 로봇에게도 너무 가깝지 않은 것만 (규칙 1)
         fr = [f for f in fr
               if min(math.hypot(f['x'] - r['x'], f['y'] - r['y']) for r in robots)
@@ -331,7 +405,12 @@ class FrontierAllocatorNode(Node):
         for i, f in enumerate(fr):
             f['id'] = i
         if not fr:
-            self.get_logger().info('프론티어 후보가 없다 — 탐사 완료이거나 맵이 비었다')
+            self.get_logger().info(
+                '프론티어 후보가 없다 — '
+                + ('탐사 범위 안을 다 봤다' if self.explore_bounds
+                   else '탐사 완료이거나 맵이 비었다'),
+                throttle_duration_sec=60.0)
+            self._record_event('no_frontiers')
             return
 
         obs = build_observation(grid, info.origin.position.x, info.origin.position.y,
@@ -340,15 +419,25 @@ class FrontierAllocatorNode(Node):
         # 132가지뿐이라 비용이 없고, 같은 관측에서 둘이 무엇을 다르게 골랐는지가
         # 곧 증류 가치의 증거다. 짝지어 데이터셋에 남긴다.
         baseline = assign_by_distance(obs, min_separation=self.min_sep)
+        teacher = None
         if self.strategy == 'llm' and self.client is not None:
             t0 = time.monotonic()
+            self._calls = []
+            attempts = []
             result = assign_by_llm(
                 obs, self._chat, min_separation=self.min_sep,
                 retries=int(self.get_parameter('llm_retries').value),
                 on_retry=lambda i, n, msg: self.get_logger().warn(
-                    f'LLM 응답 불량 ({i}/{n}) — {msg}'))
+                    f'LLM 응답 불량 ({i}/{n}) — {msg}'),
+                on_attempt=lambda i, raw, ok, err: attempts.append(
+                    {'attempt': i, 'ok': ok, 'error': err, 'raw': raw}))
             took = time.monotonic() - t0
+            self.stats['llm_calls'] += 1
+            self.stats['llm_sec'] = round(self.stats['llm_sec'] + took, 1)
+            teacher = {'latency_s': round(took, 2), 'calls': self._calls,
+                       'attempts': attempts}
             if took > self.period:
+                self.stats['late'] += 1
                 # 벽시계 기준이다. 주기를 넘기면 배정이 묵은 위치로 나가기 시작한다.
                 self.get_logger().warn(
                     f'LLM 응답에 {took:.0f}초 걸렸다 — 주기 {self.period}초를 넘겼다. '
@@ -372,6 +461,8 @@ class FrontierAllocatorNode(Node):
         fresh = {a['robot']: next(f for f in fr if f['id'] == a['frontier_id'])
                  for a in result['assignments']}
 
+        self._round_events = []
+        sent = {}
         for r in robots:
             ns = r['id']
             self._update_progress(ns, r)
@@ -379,15 +470,28 @@ class FrontierAllocatorNode(Node):
             if tgt is None:
                 continue
             gx, gy = self.send_goal(ns, *tgt)
+            sent[ns] = {'target': [round(tgt[0], 2), round(tgt[1], 2)],
+                        'waypoint': [round(gx, 2), round(gy, 2)]}
             self.get_logger().info(
                 f'[{ns}] 목표 ({tgt[0]:.1f}, {tgt[1]:.1f})'
                 + (f' -> 경유점 ({gx:.1f}, {gy:.1f})'
                    if abs(gx - tgt[0]) + abs(gy - tgt[1]) > 0.1 else ''))
-        self._record(obs, result, baseline)
+        self._record(obs, result, baseline, extra={
+            'round': self.stats['rounds'],
+            'prompt_version': PROMPT_VERSION, 'prompt_sha': PROMPT_SHA,
+            'min_separation': self.min_sep,
+            'prompt': build_alloc_prompt(obs, self.min_sep),
+            'teacher': teacher,
+            # 판단 **시점**의 탐색 셀 수. 다음 행과의 차이가 이 판단의 결과(보상)다.
+            'explored': self._explored(grid, info),
+            'sent': sent,
+            'events': list(self._round_events),
+        })
         if self.stats['rounds'] % 20 == 0:
             avg = (self.stats['sep_sum'] / self.stats['sep_n']
                    if self.stats['sep_n'] else 0.0)
-            line = (f"집계: {self.stats['rounds']}주기 | 분리 완화 "
+            line = (f"집계: {self.stats['rounds']}주기 | 새 목표 "
+                    f"{self.stats['new_targets']}개 · 포기 {self.stats['giveups']}회 | 분리 완화 "
                     f"{self.stats['degraded']}회 "
                     f"({100.0 * self.stats['degraded'] / self.stats['rounds']:.0f}%) | "
                     f"평균 확보 분리 {avg:.1f} m (요구 {self.min_sep} m)")
@@ -421,9 +525,14 @@ class FrontierAllocatorNode(Node):
                 self.get_logger().warn(
                     f'[{ns}] {self.giveup}주기 동안 진전이 없어 목표를 버린다')
                 self.stuck[ns] = 0
+                self.stats['giveups'] += 1
+                self._round_events.append({'robot': ns, 'event': 'giveup',
+                                           'target': [round(tgt[0], 2), round(tgt[1], 2)]})
         f = fresh.get(ns)
         if f is None:
             return None
+        if tgt is None or math.hypot(f['x'] - tgt[0], f['y'] - tgt[1]) > 0.5:
+            self.stats['new_targets'] += 1
         self.target[ns] = (f['x'], f['y'])
         return self.target[ns]
 
@@ -459,24 +568,71 @@ class FrontierAllocatorNode(Node):
             + (f' | LLM 근거: {result.get("reason", "")[:60]}'
                if result.get('reason') else ''))
 
-    def _record(self, obs, result, baseline=None):
-        """관측 + 두 전략의 답을 한 줄에 짝지어 남긴다.
+    def _sim_now(self):
+        return round(self.get_clock().now().nanoseconds / 1e9, 1)
 
-        증류 학습은 이 파일을 그대로 먹는다. 교사(LLM)의 답만 남기면 "교사가 옳았나"
-        를 나중에 되물을 수 없으므로, **같은 관측에 대한 베이스라인의 답도 함께**
-        남긴다. 둘이 같은 주기는 학습 신호가 없다는 뜻이기도 하다.
-        """
+    def _explored(self, grid, info):
+        """탐사 범위 안(범위가 없으면 지도 전체)의 탐색된 셀 수."""
+        b = self.explore_bounds
+        if b is None:
+            return {'known': int((grid >= 0).sum()), 'total': int(grid.size)}
+        res = info.resolution
+        ox, oy = info.origin.position.x, info.origin.position.y
+        c0 = max(0, int(math.floor((b[0] - ox) / res)))
+        c1 = min(info.width, int(math.ceil((b[2] - ox) / res)))
+        r0 = max(0, int(math.floor((b[1] - oy) / res)))
+        r1 = min(info.height, int(math.ceil((b[3] - oy) / res)))
+        win = grid[r0:r1, c0:c1]
+        total = int(round((b[2] - b[0]) / res)) * int(round((b[3] - b[1]) / res))
+        return {'known': int((win >= 0).sum()), 'total': total}
+
+    def _meta(self):
+        """실행 첫 줄. 이 파일의 데이터가 **어떤 조건에서** 나왔는지 — 섞어 학습할 때 거를 근거."""
+        g = lambda k: self.get_parameter(k).value
+        return {
+            'type': 'meta', 'run_id': self.run_id, 'run_tag': self.run_tag,
+            'strategy': self.strategy, 'started_utc': self.run_id.split('_')[0],
+            'model': g('model'), 'base_url': g('base_url'),
+            'system_prompt': g('system_prompt'), 'max_tokens': g('max_tokens'),
+            'temperature': 0.2, 'llm_retries': g('llm_retries'),
+            'period': self.period, 'min_separation': self.min_sep,
+            'min_goal_dist': self.min_goal_dist, 'max_candidates': self.max_cand,
+            'giveup_rounds': self.giveup,
+            'explore_bounds': list(self.explore_bounds) if self.explore_bounds else None,
+            'prompt_version': PROMPT_VERSION, 'prompt_sha': PROMPT_SHA,
+        }
+
+    def _append(self, row):
         if not self.dataset_path:
             return
-        row = {'observation': obs, 'result': result, 'stats': dict(self.stats)}
-        if baseline is not None and baseline is not result:
-            row['baseline'] = baseline
         try:
             with open(self.dataset_path, 'a', encoding='utf-8') as fh:
+                if not self._meta_written:
+                    fh.write(json.dumps(self._meta(), ensure_ascii=False) + '\n')
+                    self._meta_written = True
                 fh.write(json.dumps(row, ensure_ascii=False) + '\n')
         except OSError as exc:
-            self.get_logger().warn(f'데이터셋 기록 실패: {exc}')
+            self.get_logger().warn(f'데이터셋 기록 실패: {exc}', throttle_duration_sec=60.0)
 
+    def _record_event(self, event):
+        """배정이 없는 주기도 남긴다 — 탐사 완료 시각을 데이터셋에서 읽을 수 있게."""
+        self._append({'type': 'event', 't_sim': self._sim_now(), 'event': event,
+                      'stats': dict(self.stats)})
+
+    def _record(self, obs, result, baseline=None, extra=None):
+        """관측 + 두 전략의 답 + 교사 원문 + 판단 시점 탐색량을 한 줄에 남긴다.
+
+        증류 학습은 이 파일을 먹는다. 교사(LLM)의 답만 남기면 "교사가 옳았나" 를 나중에
+        되물을 수 없으므로, **같은 관측에 대한 베이스라인의 답도 함께** 남긴다. 둘이 같은
+        주기는 학습 신호가 없다는 뜻이기도 하다. 내보내기는 scripts/export_distill.py.
+        """
+        row = {'type': 'round', 't_sim': self._sim_now(), 'observation': obs,
+               'result': result, 'stats': dict(self.stats)}
+        if baseline is not None and baseline is not result:
+            row['baseline'] = baseline
+        if extra:
+            row.update(extra)
+        self._append(row)
 
 def main(args=None):
     rclpy.init(args=args)

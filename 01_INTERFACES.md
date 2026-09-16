@@ -34,11 +34,11 @@
 | `linear.z` | — | — | **상승 속도** (m/s, 목표 고도를 적분) |
 | `angular.z` | 선회 각속도 (rad/s) | 제자리 회전 속도 | 선회 각속도 (rad/s) |
 | 권장 범위 | Nav2 기준 ±0.5 | **0.045~0.195 m/s, ±0.247 rad/s** (그 위는 클램프, 그 아래는 하한으로 올라감) | ±1~2 |
-| 자세히 | [04장 2절](04_UGV_SETUP.md#2-cmd_vel--메카넘-역기구학) | [06장](06_SPOT_DRIVER.md#cmd_vel-단위) · [07장](07_SPOT_NAV.md) | [08장 3절](08_DRONE_SETUP.md#3-인터페이스-규격) |
+| 자세히 | [04장 2절](04_UGV_SETUP.md#2-cmd_vel--메카넘-역기구학) | [06장](06_SPOT_DRIVER.md#cmd_vel-단위--2026-08-16-변경) · [07장](07_SPOT_NAV.md) | [08장 3절](08_DRONE_SETUP.md#3-인터페이스-규격) |
 
 > 🔄 **2026-08-16 변경.** Spot 의 `linear.x`/`angular.z` 는 예전에 **보폭 배율**이었다
 > (`StepLength = 0.15 * linear.x`). 지금은 **m/s · rad/s** 다. 옛 값을 그대로 쓰면
-> 약 1.3 배 빨라진다 → [06_SPOT_DRIVER.md](06_SPOT_DRIVER.md#cmd_vel-단위)
+> 약 1.3 배 빨라진다 → [06_SPOT_DRIVER.md](06_SPOT_DRIVER.md#cmd_vel-단위--2026-08-16-변경)
 >
 > ⚠️ Spot 은 **최저 속도 아래를 못 낸다** (보폭 하한 — 현재 운용점에서 약 0.045 m/s).
 > 그보다 작은 명령도 그 속도로 나간다. 위 값들은 **시뮬 시각(`odom.header.stamp`) 기준
@@ -248,6 +248,9 @@ ros2 topic echo /ugv1/map --qos-durability transient_local --qos-reliability rel
 | `ROS_DOMAIN_ID` | 전부 | **30** |
 | `RMW_IMPLEMENTATION` | 전부 | `rmw_fastrtps_cpp` |
 | `ROS_LOCALHOST_ONLY` | 전부 | `0` |
+| `EXPLORE_STRATEGY` / `_PERIOD` / `_MIN_SEP` / `_BOUNDS` | **explorer** (탐사 할당) | 전략(`distance`/`llm`)·주기·최소 분리·탐사 범위 → [12장 2절](12_TASK_ALLOCATION.md#실행) |
+| `EXPLORE_TAG` / `EXPLORE_DATASET_DIR` / `EXPLORE_DATASET` | **explorer** | 증류 데이터 이름표·폴더·단일 파일 → [12장 9절](12_TASK_ALLOCATION.md#9-증류-데이터) |
+| `NVIDIA_API_KEY` | explorer (`strategy=llm`) | 호스트 값을 공통 anchor 가 넘긴다. **compose 에 적지 말 것** |
 
 호스트 셸에서 `ros2 topic list`로 들여다보려면 위 세 개를 그대로 맞춰야 한다.
 
@@ -260,6 +263,7 @@ ros2 topic echo /ugv1/map --qos-durability transient_local --qos-reliability rel
 | `{ns}_brain_{os}` (예: `ugv1_brain_windows`) | 로봇 하나의 뇌 (드라이버 · SLAM · Nav2 · 등록) |
 | `rviz_master_{os}` | `map_merger` · `joint_state_filler` · `robot_marker_publisher` · RViz2 |
 | `fleet_spawner_{os}` | `spawn_supervisor` (+ 런타임 소환 로봇의 뇌) |
+| `explorer_{os}` | `frontier_allocator` — 탐사 할당 (거리 기준 / LLM). **`--profile explore` 일 때만** 뜬다. 호스트 `data/distill/` 를 마운트해 증류 데이터를 쌓는다 → [12장](12_TASK_ALLOCATION.md) |
 
 | 설정 파일 | 다루는 것 |
 |---|---|
@@ -270,11 +274,13 @@ ros2 topic echo /ugv1/map --qos-durability transient_local --qos-reliability rel
 | [webots_python/config/mapper_params_online_async.yaml](src/webots_python/config/mapper_params_online_async.yaml) | slam_toolbox |
 | `src/Webots-SummitXL/workspace/navigation/param/nav2.yaml` | Nav2 (세 로봇 공유) |
 | `docker-configs/*/docker-compose.yml` | 서비스 구성 (매니페스트에서 생성) |
+| [webots_goal_bridge/scripts/experiments/](src/webots_goal_bridge/scripts/experiments/) | 탐사 비교 실험용 compose 오버라이드 → [12장 9절](12_TASK_ALLOCATION.md#9-증류-데이터) |
+| `data/distill/` | 탐사 할당 증류 데이터 (git 에 안 올라감) → [12장 9절](12_TASK_ALLOCATION.md#9-증류-데이터) |
 
 ### 관련 문서
 
 - [Readme.md](Readme.md) — 설치·실행·전체 그림
-- [03_SPAWNER.md](03_SPAWNER.md) · [10_MAP_MERGE.md](10_MAP_MERGE.md) · [02_WORLD_GEN.md](02_WORLD_GEN.md)
+- [03_SPAWNER.md](03_SPAWNER.md) · [10_MAP_MERGE.md](10_MAP_MERGE.md) · [02_WORLD_GEN.md](02_WORLD_GEN.md) · [12_TASK_ALLOCATION.md](12_TASK_ALLOCATION.md)
 - [04_UGV_SETUP.md](04_UGV_SETUP.md) · [06_SPOT_DRIVER.md](06_SPOT_DRIVER.md) · [08_DRONE_SETUP.md](08_DRONE_SETUP.md)
 
 ---

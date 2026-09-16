@@ -1,0 +1,17 @@
+# 실험: oneroom 건물 내부 정찰, 편대 ugv1 + drone1 (_in2.yaml) — 기본 compose 위에 얹는다.
+#   docker compose -f docker-configs/<os>/docker-compose.yml \
+#     -f src/webots_goal_bridge/scripts/experiments/oneroom_in2.override.yml --profile explore up -d
+services:
+  fleet:
+    command: >
+      bash -c "source /ros2_ws/install/setup.bash &&
+               ros2 launch webots_robot_spawner spawner.launch.py fleet:=_in2.yaml manifest_brains:=false"
+  # 뇌 컨테이너의 초기 위치 환경변수를 편대와 맞춘다 (등록 명함·드론 층 매퍼 첫 창 중심에 쓰인다)
+  ugv1:
+    environment:
+      - ROBOT_INIT_X=-34.000
+      - ROBOT_INIT_Y=-18.000
+  drone1:
+    environment:
+      - ROBOT_INIT_X=-34.000
+      - ROBOT_INIT_Y=-13.000

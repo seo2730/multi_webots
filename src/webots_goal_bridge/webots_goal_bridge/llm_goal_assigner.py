@@ -51,7 +51,7 @@ def map_qos():
 
 
 def extract_frontiers(grid, origin_x, origin_y, res, rx, ry,
-                      min_cells=5, bucket=1.0, max_n=8):
+                      min_cells=5, bucket=1.0, max_n=8, bounds=None):
     """미탐색과 맞닿은 자유 공간(프론티어)을 덩어리로 묶어 후보 목록을 만든다.
 
     ROS 에 의존하지 않는 순수 함수다 — 격자와 숫자만 받는다. 그래야 시뮬을 띄우지
@@ -61,6 +61,10 @@ def extract_frontiers(grid, origin_x, origin_y, res, rx, ry,
     수백 개 나오므로 bucket(m) 격자로 묶어 대표점 하나씩으로 줄인다.
     (scipy 연결요소 대신 격자 버킷을 쓴다 — 의존성이 늘지 않고, 탐사 목표를 고르는
      해상도로는 충분하다.)
+
+    bounds=(x0, y0, x1, y1) 를 주면 그 사각형 안의 프론티어 셀만 쓴다.
+    🚨 **정렬·자르기 전에** 거른다. 뒤에서 거르면 가까운 외부 프론티어가 상위 max_n 을
+       차지해 범위 안 후보가 잘려 나간다 — 건물 밖 마당이 로봇 곁에 있으면 실제로 그렇다.
     """
     h, w = grid.shape
     if w == 0 or h == 0:
@@ -79,6 +83,12 @@ def extract_frontiers(grid, origin_x, origin_y, res, rx, ry,
         return []
     wx = origin_x + (is_ + 0.5) * res
     wy = origin_y + (js + 0.5) * res
+    if bounds is not None:
+        x0, y0, x1, y1 = bounds
+        keep = (wx >= x0) & (wx <= x1) & (wy >= y0) & (wy <= y1)
+        wx, wy = wx[keep], wy[keep]
+        if wx.size == 0:
+            return []
 
     keys = (np.floor(wx / bucket).astype(np.int64) << 32) ^ \
            np.floor(wy / bucket).astype(np.int64)

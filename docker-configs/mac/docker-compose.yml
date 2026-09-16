@@ -223,17 +223,31 @@ services:
   #       docker compose -f docker-configs/mac/docker-compose.yml --profile explore up -d explorer
   # llm 은 위 anchor 의 NVIDIA_API_KEY 를 쓴다. 키가 없거나 응답이 스키마를
   # 어기면 매 주기 거리 베이스라인으로 물러나므로 탐사가 멈추지는 않는다.
+  #
+  # 탐사 범위를 좁히려면 EXPLORE_BOUNDS=x0,y0,x1,y1 (월드 좌표 m). 예: oneroom 건물 안
+  #     EXPLORE_BOUNDS=-37.0,-37.0,37.0,37.0
+  #
+  # 증류 데이터는 기본으로 호스트 data/distill/raw/ 에 실행마다 파일 하나씩 쌓인다.
+  #     EXPLORE_TAG=oneroom-in2_b1   # 파일명·meta 에 들어갈 이름표
+  #     EXPLORE_DATASET=/tmp/x.jsonl # 주면 폴더 대신 이 파일 하나에 쓴다 (컨테이너 안 — down 하면 사라짐)
   explorer:
     <<: *mac-common
     container_name: explorer_mac
     profiles: ["explore"]
     restart: unless-stopped
+    # 🧪 증류 데이터를 호스트에 남긴다. 컨테이너 /tmp 에 쓰면 down 할 때 사라진다.
+    #    실행마다 data/distill/raw/{run_id}.jsonl 하나 — 형식과 내보내기는 12장 9절.
+    volumes:
+      - ../../data/distill:/data/distill
     # 🚨 launch 인자는 반드시 **한 줄**로 둔다. YAML 접힘 스칼라(>)는 더 깊게 들여쓴
     #    줄의 줄바꿈을 보존하므로, 인자를 줄바꿈해 적으면 bash 가 `ros2 launch` 를
     #    인자 없이 실행하고 `strategy:=llm` 을 별도 명령으로 취급한다.
     #    (실측: 노드가 조용히 기본값 distance/30초로 떴다 — 에러가 안 난다)
+    # 🚨 값이 빈 인자(`name:=`)도 안 된다. ros2 launch 가 "malformed launch argument" 로
+    #    거부하고 컨테이너가 재시작을 반복한다. 그래서 선택 인자의 기본값은 빈 값이 아니라
+    #    none 이고, 할당기가 none 을 "안 줌" 으로 읽는다.
     command: >
       bash -c "source /ros2_ws/install/setup.bash &&
-               ros2 launch webots_goal_bridge allocator.launch.py strategy:=${EXPLORE_STRATEGY:-distance} period:=${EXPLORE_PERIOD:-30.0} min_separation:=${EXPLORE_MIN_SEP:-15.0} dataset_path:=${EXPLORE_DATASET:-}"
+               ros2 launch webots_goal_bridge allocator.launch.py strategy:=${EXPLORE_STRATEGY:-distance} period:=${EXPLORE_PERIOD:-30.0} min_separation:=${EXPLORE_MIN_SEP:-15.0} dataset_path:=${EXPLORE_DATASET:-none} explore_bounds:=${EXPLORE_BOUNDS:-none} dataset_dir:=${EXPLORE_DATASET_DIR:-/data/distill/raw} run_tag:=${EXPLORE_TAG:-none}"
     depends_on:
       - master
