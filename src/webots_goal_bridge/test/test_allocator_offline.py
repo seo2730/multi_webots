@@ -353,10 +353,29 @@ def test_async_llm():
     check('작업이 예외로 끝나면 None (탐사는 계속)', n._async_llm(obs, fr) is None)
 
 
+def test_resend_while_pending():
+    """교사를 기다리는 주기: 새 배정은 없지만 기존 목표는 다시 나가고 진행도 추적된다."""
+    node = os.path.join(SRC, 'frontier_allocator_node.py')
+    N = shell(['_resend_targets', '_update_progress'], node, {'math': math})
+    n = N()
+    n.target = {'ugv1': (10.0, 0.0)}          # drone1 은 아직 목표가 없다
+    n.last_pos, n.stuck, n.progress_min = {}, {}, 1.0
+    out = []
+    n.send_goal = lambda ns, x, y: (out.append((ns, x, y)) or (x, y))
+    robots = [{'id': 'ugv1', 'x': 0.0, 'y': 0.0}, {'id': 'drone1', 'x': 5.0, 'y': 5.0}]
+    sent = n._resend_targets(robots)
+    check('목표가 있는 로봇에게만 다시 보낸다', list(sent) == ['ugv1'] and out == [('ugv1', 10.0, 0.0)])
+    n._resend_targets([{'id': 'ugv1', 'x': 0.1, 'y': 0.0}])
+    check('기다리는 동안에도 진전 없음이 쌓인다 (포기 조건이 멈추지 않는다)',
+          n.stuck['ugv1'] == 1, str(n.stuck))
+    n._resend_targets([{'id': 'ugv1', 'x': 9.0, 'y': 0.0}])
+    check('움직였으면 초기화', n.stuck['ugv1'] == 0)
+
+
 def main():
     for fn in (test_extract_frontiers, test_opt_and_bounds, test_clamp_and_targets,
                test_chat_truncation, test_assign_by_llm, test_async_llm,
-               test_record_and_export):
+               test_resend_while_pending, test_record_and_export):
         print(f'\n--- {fn.__name__} ---')
         fn()
     print('\n전부 통과' if not FAILS else f'\n실패 {len(FAILS)}건: {FAILS}')

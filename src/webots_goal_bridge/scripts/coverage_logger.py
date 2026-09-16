@@ -54,10 +54,12 @@ def interior(m):
     i = m.info
     g = np.asarray(m.data, dtype=np.int16).reshape(i.height, i.width)
     ox, oy, res = i.origin.position.x, i.origin.position.y, i.resolution
-    c0 = max(0, int(math.floor((B[0] - ox) / res)))
-    c1 = min(i.width, int(math.ceil((B[2] - ox) / res)))
-    r0 = max(0, int(math.floor((B[1] - oy) / res)))
-    r1 = min(i.height, int(math.ceil((B[3] - oy) / res)))
+    # 🚨 창의 양 끝을 같은 방식(round)으로 잡는다. floor/ceil 을 섞으면 창이 분모보다
+    #    한 칸 넓어져 커버리지가 100% 를 넘는다 (실측 100.25%).
+    c0 = max(0, int(round((B[0] - ox) / res)))
+    c1 = min(i.width, int(round((B[2] - ox) / res)))
+    r0 = max(0, int(round((B[1] - oy) / res)))
+    r1 = min(i.height, int(round((B[3] - oy) / res)))
     win = g[r0:r1, c0:c1]
     total = int(round((B[2] - B[0]) / res)) * int(round((B[3] - B[1]) / res))
     return int((win >= 0).sum()), total

@@ -303,6 +303,24 @@ class FrontierAllocatorNode(Node):
                 + (' — 두 배로 다시 물어본다' if factor == 1 else ''))
         raise ValueError(f'예산 {budget * 2} 토큰으로도 본문이 안 나왔다')
 
+    def _resend_targets(self, robots):
+        """새 배정 없이 **기존 목표만 다시 보낸다** (교사를 기다리는 주기).
+
+        진행 상황도 같이 본다 — 안 그러면 기다리는 동안 포기 조건이 멈춰서, 도달 못 하는
+        목표에 묶인 로봇이 영영 풀려나지 못한다.
+        """
+        sent = {}
+        for r in robots:
+            ns = r['id']
+            self._update_progress(ns, r)
+            tgt = self.target.get(ns)
+            if tgt is None:
+                continue
+            gx, gy = self.send_goal(ns, *tgt)
+            sent[ns] = {'target': [round(tgt[0], 2), round(tgt[1], 2)],
+                        'waypoint': [round(gx, 2), round(gy, 2)]}
+        return sent
+
     def _llm_call(self, obs, fr):
         """교사에게 한 번 물어본다. 결과와 기록을 함께 돌려준다 (동기 경로)."""
         t0 = time.monotonic()
@@ -472,11 +490,13 @@ class FrontierAllocatorNode(Node):
             snap = (self._async_llm(obs, fr) if self.llm_async
                     else self._llm_call(obs, fr))
             if snap is None:
-                # 아직 생각 중이다. **새 배정을 하지 않고 돌아간다** — 로봇은 지난 목표로
-                # 계속 간다. 여기서 세우면 탐사 성능이 판단이 아니라 지연을 재게 된다.
+                # 아직 생각 중이다. 새 배정은 하지 않되 **기존 목표는 다시 보낸다.**
+                # 🚨 여기서 그냥 돌아가면 목표를 끝낸 로봇이 다음 답까지(실측 135~196초)
+                #    아무 목표 없이 선다 — 동기 방식보다 오히려 나빠진다(실측: 최종
+                #    커버리지 68% vs 85%). 재전송은 Nav2 가 멈추지 않게 하는 것이다.
                 self.stats['pending'] += 1
                 self.stats['rounds'] += 1
-                self._record_event('llm_pending')
+                self._record_event('llm_pending', {'sent': self._resend_targets(robots)})
                 return
             obs, fr = snap['obs'], snap['fr']
             result, teacher = snap['result'], snap['teacher']
@@ -622,10 +642,11 @@ class FrontierAllocatorNode(Node):
             return {'known': int((grid >= 0).sum()), 'total': int(grid.size)}
         res = info.resolution
         ox, oy = info.origin.position.x, info.origin.position.y
-        c0 = max(0, int(math.floor((b[0] - ox) / res)))
-        c1 = min(info.width, int(math.ceil((b[2] - ox) / res)))
-        r0 = max(0, int(math.floor((b[1] - oy) / res)))
-        r1 = min(info.height, int(math.ceil((b[3] - oy) / res)))
+        # 창의 양 끝을 같은 방식으로 잡는다 (coverage_logger 와 같은 이유)
+        c0 = max(0, int(round((b[0] - ox) / res)))
+        c1 = min(info.width, int(round((b[2] - ox) / res)))
+        r0 = max(0, int(round((b[1] - oy) / res)))
+        r1 = min(info.height, int(round((b[3] - oy) / res)))
         win = grid[r0:r1, c0:c1]
         total = int(round((b[2] - b[0]) / res)) * int(round((b[3] - b[1]) / res))
         return {'known': int((win >= 0).sum()), 'total': total}
@@ -659,10 +680,13 @@ class FrontierAllocatorNode(Node):
         except OSError as exc:
             self.get_logger().warn(f'데이터셋 기록 실패: {exc}', throttle_duration_sec=60.0)
 
-    def _record_event(self, event):
+    def _record_event(self, event, extra=None):
         """배정이 없는 주기도 남긴다 — 탐사 완료 시각을 데이터셋에서 읽을 수 있게."""
-        self._append({'type': 'event', 't_sim': self._sim_now(), 'event': event,
-                      'stats': dict(self.stats)})
+        row = {'type': 'event', 't_sim': self._sim_now(), 'event': event,
+               'stats': dict(self.stats)}
+        if extra:
+            row.update(extra)
+        self._append(row)
 
     def _record(self, obs, result, baseline=None, extra=None):
         """관측 + 두 전략의 답 + 교사 원문 + 판단 시점 탐색량을 한 줄에 남긴다.
