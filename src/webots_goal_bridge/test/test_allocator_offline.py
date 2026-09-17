@@ -108,7 +108,8 @@ def test_opt_and_bounds():
 # ------------------------------------------------------------- 경유점 / 목표 집계
 def test_clamp_and_targets():
     node = os.path.join(SRC, 'frontier_allocator_node.py')
-    N = shell(['clamp', '_pick_target', '_explored'], node, {'math': math, 'np': np})
+    N = shell(['clamp', '_pick_target', '_explored', '_stale_seconds', '_update_progress'],
+              node, {'math': math, 'np': np})
 
     class P:
         def __init__(self, x, y):
@@ -133,9 +134,12 @@ def test_clamp_and_targets():
 
     n = N()
     n.target, n.stuck, n.giveup, n.min_goal_dist = {}, {}, 3, 4.0
+    n.giveup_sec, n.no_prog_since = 180.0, {}
     n.stats = {'new_targets': 0, 'giveups': 0}
     n._round_events = []
     n.get_logger = lambda: Log()
+    clock = {'t': 0.0}
+    n._sim_now = lambda: clock['t']
     A, B = {'x': 20.0, 'y': 0.0}, {'x': 0.0, 'y': 20.0}
     r0 = {'x': 0.0, 'y': 0.0}
     n._pick_target('u', r0, [A, B], {'u': A})
@@ -144,11 +148,34 @@ def test_clamp_and_targets():
     check('멀고 아직 프론티어면 유지', n.stats['new_targets'] == 1 and n.target['u'] == (20.0, 0.0))
     n.stuck['u'] = 3
     n._pick_target('u', r0, [A, B], {'u': B})
-    check('포기 시 giveups+1 · 새 목표+1 · 이벤트 기록',
+    check('주기 수로 포기 — giveups+1 · 새 목표+1 · 이벤트에 by=rounds',
           n.stats == {'new_targets': 2, 'giveups': 1}
-          and n._round_events == [{'robot': 'u', 'event': 'giveup', 'target': [20.0, 0.0]}])
+          and n._round_events[0]['by'] == 'rounds' and n._round_events[0]['robot'] == 'u')
     n._pick_target('u', {'x': 0.0, 'y': 19.0}, [A, B], {'u': B})
     check('도달 후 같은 좌표는 세지 않는다', n.stats['new_targets'] == 2)
+
+    # --- 시간 기준 포기: 주기가 느려도 같은 실제 시간에 포기한다 ---
+    m = N()
+    m.target, m.stuck, m.giveup, m.min_goal_dist = {'u': (20.0, 0.0)}, {}, 3, 4.0
+    m.giveup_sec, m.no_prog_since = 180.0, {}
+    m.stats = {'new_targets': 0, 'giveups': 0}
+    m._round_events, m.last_pos, m.progress_min = [], {}, 1.0
+    m.get_logger = lambda: Log()
+    clk = {'t': 0.0}
+    m._sim_now = lambda: clk['t']
+    m._update_progress('u', {'x': 0.0, 'y': 0.0})            # 기준점
+    clk['t'] = 150.0
+    m._update_progress('u', {'x': 0.2, 'y': 0.0})            # 거의 안 움직임
+    m._round_events = []
+    m._pick_target('u', {'x': 0.0, 'y': 0.0}, [A], {'u': A})
+    check('150초 정체(주기 2회)는 아직 유지', m.stats['giveups'] == 0 and m._round_events == [])
+    clk['t'] = 400.0
+    m._update_progress('u', {'x': 0.3, 'y': 0.0})
+    m._pick_target('u', {'x': 0.0, 'y': 0.0}, [A], {'u': A})
+    check('180초를 넘기면 주기 수와 무관하게 포기 (by=time)',
+          m.stats['giveups'] == 1 and m._round_events[-1]['by'] == 'time'
+          and m._round_events[-1]['stale_s'] >= 180.0, str(m._round_events[-1]))
+    check('포기 뒤 정체 시계가 초기화된다', m._stale_seconds('u') == 0.0)
 
     n = N()
     info = types.SimpleNamespace(resolution=1.0, width=100, height=100,
@@ -360,6 +387,9 @@ def test_resend_while_pending():
     n = N()
     n.target = {'ugv1': (10.0, 0.0)}          # drone1 은 아직 목표가 없다
     n.last_pos, n.stuck, n.progress_min = {}, {}, 1.0
+    n.no_prog_since = {}
+    clock = {'t': 0.0}
+    n._sim_now = lambda: clock['t']
     out = []
     n.send_goal = lambda ns, x, y: (out.append((ns, x, y)) or (x, y))
     robots = [{'id': 'ugv1', 'x': 0.0, 'y': 0.0}, {'id': 'drone1', 'x': 5.0, 'y': 5.0}]

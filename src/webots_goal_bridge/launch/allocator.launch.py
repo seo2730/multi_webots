@@ -33,6 +33,7 @@ def generate_launch_description():
         ('min_goal_dist', '4.0', '이보다 가까운 후보는 제외 (제자리 깨작임 방지)'),
         ('min_separation', '15.0', '배정된 후보끼리 최소 간격. 못 맞추면 단계적으로 낮춘다'),
         ('giveup_rounds', '3', '이만큼 진전이 없으면 목표를 버린다'),
+        ('giveup_seconds', '180.0', '이만큼(시뮬 초) 진전이 없으면 목표를 버린다 (0 이면 끔)'),
         ('dataset_path', '', '증류용 학습 데이터 JSONL 경로. 비우면 안 쓴다'),
         ('explore_bounds', '',
          "탐사 범위 'x0,y0,x1,y1' (월드 좌표). 비우면 지도 전체"),
@@ -66,6 +67,7 @@ def generate_launch_description():
                 'min_goal_dist': LaunchConfiguration('min_goal_dist'),
                 'min_separation': LaunchConfiguration('min_separation'),
                 'giveup_rounds': LaunchConfiguration('giveup_rounds'),
+                'giveup_seconds': LaunchConfiguration('giveup_seconds'),
                 'dataset_path': LaunchConfiguration('dataset_path'),
                 # 문자열로 못 박는다. '-37,-37,37,37' 이 숫자 목록으로 추론되면
                 # 선언한 문자열 파라미터와 형이 어긋나 노드가 기동에서 죽는다.

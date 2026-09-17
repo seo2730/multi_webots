@@ -123,6 +123,11 @@ class FrontierAllocatorNode(Node):
         self.declare_parameter('min_separation', 10.0)
         # 목표를 유지할 최대 주기 수. 이 안에 못 가면 버리고 다시 배정한다.
         self.declare_parameter('giveup_rounds', 3)
+        # 🚨 포기 조건은 **시간으로도** 건다. 주기 수만 쓰면 판단이 느린 전략에서
+        #    같은 "3주기" 가 훨씬 긴 시간이 된다 — 실측: 베이스라인 3x60초=3분인데
+        #    비동기 LLM 은 3x213초 = 10분 넘게 못 가는 목표를 붙들고 헤맸다.
+        #    두 전략이 같은 실제 시간에 포기해야 이동거리 비교가 성립한다.
+        self.declare_parameter('giveup_seconds', 180.0)
         # 한 주기에 이만큼도 못 움직였으면 "진전 없음"으로 센다.
         self.declare_parameter('progress_min', 1.0)
         # 증류용 학습 데이터. 비우면 안 쓴다.
@@ -162,6 +167,7 @@ class FrontierAllocatorNode(Node):
         self.max_cand = int(self.get_parameter('max_candidates').value)
         self.min_sep = float(self.get_parameter('min_separation').value)
         self.giveup = int(self.get_parameter('giveup_rounds').value)
+        self.giveup_sec = float(self.get_parameter('giveup_seconds').value)
         self.progress_min = float(self.get_parameter('progress_min').value)
         self.dataset_path = opt_str(self.get_parameter('dataset_path').value)
         self.explore_bounds = parse_bounds(str(self.get_parameter('explore_bounds').value))
@@ -187,6 +193,7 @@ class FrontierAllocatorNode(Node):
         self.goal_pub = {}
         self.target = {}        # ns -> (x, y)   지속 목표
         self.stuck = {}         # ns -> 진전 없는 주기 수
+        self.no_prog_since = {}  # ns -> 마지막으로 진전이 있었던 시뮬 시각
         self.last_pos = {}
         # 🚨 분산 포기(폴백) 집계. 이게 곧 비교 지표다 — 베이스라인이 몇 번이나
         #    "분리 제약을 만족하는 조합이 없어" 물러났는지가 LLM 이 개선할 여지다.
@@ -578,13 +585,26 @@ class FrontierAllocatorNode(Node):
             self.get_logger().info(line)
 
     def _update_progress(self, ns, r):
-        """진전이 없으면 센다. 규칙 3 — 포기 조건의 근거."""
+        """진전이 없으면 주기 수와 **경과 시간**을 함께 센다. 규칙 3 — 포기 조건의 근거."""
         prev = self.last_pos.get(ns)
         now = (r['x'], r['y'])
+        t = self._sim_now()
         if prev is not None:
             moved = math.hypot(now[0] - prev[0], now[1] - prev[1])
-            self.stuck[ns] = 0 if moved >= self.progress_min else self.stuck.get(ns, 0) + 1
+            if moved >= self.progress_min:
+                self.stuck[ns] = 0
+                self.no_prog_since[ns] = t
+            else:
+                self.stuck[ns] = self.stuck.get(ns, 0) + 1
+                self.no_prog_since.setdefault(ns, t)
+        else:
+            self.no_prog_since[ns] = t
         self.last_pos[ns] = now
+
+    def _stale_seconds(self, ns):
+        """이 로봇이 진전 없이 보낸 시뮬 시간(초)."""
+        since = self.no_prog_since.get(ns)
+        return 0.0 if since is None else max(0.0, self._sim_now() - since)
 
     def _pick_target(self, ns, r, fr, fresh):
         """지속 목표를 유지하되, 도달했거나 진전이 없으면 새로 받는다."""
@@ -593,20 +613,27 @@ class FrontierAllocatorNode(Node):
             far = math.hypot(tgt[0] - r['x'], tgt[1] - r['y']) > self.min_goal_dist
             still = min((math.hypot(tgt[0] - f['x'], tgt[1] - f['y']) for f in fr),
                         default=1e9) < 6.0
-            if far and still and self.stuck.get(ns, 0) < self.giveup:
+            stale = self._stale_seconds(ns)
+            by_rounds = self.stuck.get(ns, 0) >= self.giveup
+            by_time = self.giveup_sec > 0.0 and stale >= self.giveup_sec
+            if far and still and not (by_rounds or by_time):
                 return tgt
-            if self.stuck.get(ns, 0) >= self.giveup:
-                self.get_logger().warn(
-                    f'[{ns}] {self.giveup}주기 동안 진전이 없어 목표를 버린다')
+            if by_rounds or by_time:
+                why = (f'{stale:.0f}초' if by_time else f'{self.giveup}주기')
+                self.get_logger().warn(f'[{ns}] {why} 동안 진전이 없어 목표를 버린다')
                 self.stuck[ns] = 0
+                self.no_prog_since[ns] = self._sim_now()
                 self.stats['giveups'] += 1
                 self._round_events.append({'robot': ns, 'event': 'giveup',
+                                           'stale_s': round(stale, 1),
+                                           'by': 'time' if by_time else 'rounds',
                                            'target': [round(tgt[0], 2), round(tgt[1], 2)]})
         f = fresh.get(ns)
         if f is None:
             return None
         if tgt is None or math.hypot(f['x'] - tgt[0], f['y'] - tgt[1]) > 0.5:
             self.stats['new_targets'] += 1
+            self.no_prog_since[ns] = self._sim_now()   # 새 목표면 시계도 새로
         self.target[ns] = (f['x'], f['y'])
         return self.target[ns]
 
@@ -673,7 +700,7 @@ class FrontierAllocatorNode(Node):
             'period': self.period, 'min_separation': self.min_sep,
             'llm_async': self.llm_async,
             'min_goal_dist': self.min_goal_dist, 'max_candidates': self.max_cand,
-            'giveup_rounds': self.giveup,
+            'giveup_rounds': self.giveup, 'giveup_seconds': self.giveup_sec,
             'explore_bounds': list(self.explore_bounds) if self.explore_bounds else None,
             'prompt_version': PROMPT_VERSION, 'prompt_sha': PROMPT_SHA,
         }
