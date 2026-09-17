@@ -158,6 +158,12 @@ class FrontierAllocatorNode(Node):
         #    다 쓰고 서 있게 되고, 탐사 성능이 판단 품질이 아니라 지연을 재게 된다.
         #    true 면 답이 오는 주기에만 목표를 갱신하고, 그 사이에는 기존 목표를 유지한다.
         self.declare_parameter('llm_async', True)
+        # 🚨 답 사이의 지역 재조준. 교사의 배정(어느 로봇이 어느 구역)은 앵커로 유지하고,
+        #    답이 오기 전 주기에는 그 구역 안에서 **현재 가장 가까운 프론티어**로 목표만
+        #    갱신한다. 베이스라인이 60초마다 하던 보정을 되살리는 것이다.
+        #    근거: 탐사점 1개당 이동이 베이스라인 10.9 m vs LLM 17.4 m 였다. 판단이 드물면
+        #    목표를 오래 붙들어 한 점이 비싸진다.
+        self.declare_parameter('llm_retarget', True)
 
         self.period = float(self.get_parameter('period').value)
         self.strategy = str(self.get_parameter('strategy').value)
@@ -172,6 +178,7 @@ class FrontierAllocatorNode(Node):
         self.dataset_path = opt_str(self.get_parameter('dataset_path').value)
         self.explore_bounds = parse_bounds(str(self.get_parameter('explore_bounds').value))
         self.llm_async = bool(self.get_parameter('llm_async').value)
+        self.llm_retarget = bool(self.get_parameter('llm_retarget').value)
         self.dataset_dir = opt_str(self.get_parameter('dataset_dir').value)
         self.run_tag = re.sub(r'[^A-Za-z0-9_-]+', '-',
                               opt_str(self.get_parameter('run_tag').value))
@@ -194,6 +201,7 @@ class FrontierAllocatorNode(Node):
         self.target = {}        # ns -> (x, y)   지속 목표
         self.stuck = {}         # ns -> 진전 없는 주기 수
         self.no_prog_since = {}  # ns -> 마지막으로 진전이 있었던 시뮬 시각
+        self.anchor = {}        # ns -> 교사가 배정한 구역의 기준점
         self.last_pos = {}
         # 🚨 분산 포기(폴백) 집계. 이게 곧 비교 지표다 — 베이스라인이 몇 번이나
         #    "분리 제약을 만족하는 조합이 없어" 물러났는지가 LLM 이 개선할 여지다.
@@ -205,7 +213,7 @@ class FrontierAllocatorNode(Node):
         # 같은 목표를 주기마다 다시 보내는 것은 세지 않는다.
         self.stats = {'rounds': 0, 'degraded': 0, 'sep_sum': 0.0, 'sep_n': 0,
                       'new_targets': 0, 'giveups': 0,
-                      'llm_fail': 0, 'fell_back': 0, 'pending': 0,
+                      'llm_fail': 0, 'fell_back': 0, 'pending': 0, 'retargets': 0,
                       'llm_calls': 0, 'llm_sec': 0.0, 'late': 0,
                       'agree': 0, 'llm_better': 0, 'base_better': 0}
 
@@ -309,6 +317,42 @@ class FrontierAllocatorNode(Node):
                 f'추론이 예산 {budget * factor} 토큰을 다 써 본문이 잘렸다'
                 + (' — 두 배로 다시 물어본다' if factor == 1 else ''))
         raise ValueError(f'예산 {budget * 2} 토큰으로도 본문이 안 나왔다')
+
+    def _owner_of(self, f):
+        """이 후보는 어느 로봇의 구역인가 — 교사 앵커까지의 거리로 나눈다(보로노이)."""
+        best, who = float('inf'), None
+        for ns, a in self.anchor.items():
+            d = math.hypot(f['x'] - a[0], f['y'] - a[1])
+            if d < best:
+                best, who = d, ns
+        return who
+
+    def _local_retarget(self, robots, fr):
+        """교사의 배정은 유지하고 목표만 현재 지도로 갱신한다. 바꾼 로봇 이름을 돌려준다.
+
+        🚨 자기 구역 안에서만 고른다. 구역을 무시하고 가장 가까운 것을 잡으면 두 로봇이
+           같은 곳으로 몰려, 교사가 나눈 분업이 사라진다.
+        """
+        if not self.anchor or not fr:
+            return []
+        changed = []
+        for r in robots:
+            ns = r['id']
+            if ns not in self.anchor:
+                continue
+            mine = [f for f in fr if self._owner_of(f) == ns
+                    and math.hypot(f['x'] - r['x'], f['y'] - r['y']) >= self.min_goal_dist]
+            if not mine:
+                continue
+            f = min(mine, key=lambda f: math.hypot(f['x'] - r['x'], f['y'] - r['y']))
+            tgt, prev = (f['x'], f['y']), self.target.get(ns)
+            if prev is None or math.hypot(tgt[0] - prev[0], tgt[1] - prev[1]) > 0.5:
+                self.stats['new_targets'] += 1
+                self.stats['retargets'] += 1
+                self.no_prog_since[ns] = self._sim_now()
+                changed.append(ns)
+            self.target[ns] = tgt
+        return changed
 
     def _resend_targets(self, robots):
         """새 배정 없이 **기존 목표만 다시 보낸다** (교사를 기다리는 주기).
@@ -505,8 +549,10 @@ class FrontierAllocatorNode(Node):
                     #    아무 목표 없이 선다 — 동기 방식보다 오히려 나빠진다(실측: 최종
                     #    커버리지 68% vs 85%). 재전송은 Nav2 가 멈추지 않게 하는 것이다.
                     self.stats['rounds'] += 1
+                    moved = self._local_retarget(robots, fr) if self.llm_retarget else {}
                     self._record_event('llm_pending',
-                                       {'sent': self._resend_targets(robots)})
+                                       {'sent': self._resend_targets(robots),
+                                        'retargeted': sorted(moved)})
                     return
                 # 아무 목표도 없다 = 첫 답을 기다리는 시동 구간. 그냥 두면 로봇이 20~120초
                 # 놀고 그만큼이 전략 차이로 잘못 읽힌다. 베이스라인으로 시동만 걸고
@@ -540,6 +586,9 @@ class FrontierAllocatorNode(Node):
                 f"(누적 {self.stats['degraded']}/{self.stats['rounds']}회)")
         fresh = {a['robot']: next(f for f in fr if f['id'] == a['frontier_id'])
                  for a in result['assignments']}
+        if teacher is not None:
+            # 교사가 나눈 구역을 기억한다. 다음 답이 올 때까지 이 기준으로 재조준한다.
+            self.anchor = {ns: (f['x'], f['y']) for ns, f in fresh.items()}
 
         self._round_events = []
         sent = {}
@@ -698,7 +747,7 @@ class FrontierAllocatorNode(Node):
             'system_prompt': g('system_prompt'), 'max_tokens': g('max_tokens'),
             'temperature': 0.2, 'llm_retries': g('llm_retries'),
             'period': self.period, 'min_separation': self.min_sep,
-            'llm_async': self.llm_async,
+            'llm_async': self.llm_async, 'llm_retarget': self.llm_retarget,
             'min_goal_dist': self.min_goal_dist, 'max_candidates': self.max_cand,
             'giveup_rounds': self.giveup, 'giveup_seconds': self.giveup_sec,
             'explore_bounds': list(self.explore_bounds) if self.explore_bounds else None,

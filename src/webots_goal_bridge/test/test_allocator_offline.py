@@ -402,10 +402,51 @@ def test_resend_while_pending():
     check('움직였으면 초기화', n.stuck['ugv1'] == 0)
 
 
+def test_local_retarget():
+    """답 사이 재조준: 교사가 나눈 구역은 지키고, 그 안에서 가까운 목표로 갱신한다."""
+    node = os.path.join(SRC, 'frontier_allocator_node.py')
+    N = shell(['_local_retarget', '_owner_of'], node, {'math': math})
+    n = N()
+    n.anchor = {'ugv1': (20.0, 0.0), 'drone1': (-20.0, 0.0)}
+    n.target = {'ugv1': (20.0, 0.0), 'drone1': (-20.0, 0.0)}
+    n.min_goal_dist = 4.0
+    n.stats = {'new_targets': 0, 'retargets': 0}
+    n.no_prog_since = {}
+    n._sim_now = lambda: 100.0
+    fr = [{'x': 12.0, 'y': 0.0}, {'x': 18.0, 'y': 0.0},      # ugv1 구역
+          {'x': -12.0, 'y': 0.0}, {'x': -25.0, 'y': 0.0},    # drone1 구역
+          {'x': 1.0, 'y': 0.0}]                              # ugv1 곁 — 너무 가깝다
+    robots = [{'id': 'ugv1', 'x': 0.0, 'y': 0.0}, {'id': 'drone1', 'x': -30.0, 'y': 0.0}]
+    changed = n._local_retarget(robots, fr)
+    check('두 로봇 모두 재조준', sorted(changed) == ['drone1', 'ugv1'], str(changed))
+    check('ugv1 은 자기 구역에서 가장 가까운 12.0 (1.0 은 min_goal_dist 미만이라 제외)',
+          n.target['ugv1'] == (12.0, 0.0), str(n.target['ugv1']))
+    check('drone1 은 자기 구역에서 가장 가까운 -25.0', n.target['drone1'] == (-25.0, 0.0),
+          str(n.target['drone1']))
+    check('남의 구역은 안 가져간다 (-12 는 drone1 구역이라 ugv1 이 못 잡는다)',
+          n.target['ugv1'][0] > 0)
+    check('갱신은 새 탐사점으로 센다', n.stats == {'new_targets': 2, 'retargets': 2})
+    check('정체 시계도 새로 시작', n.no_prog_since == {'ugv1': 100.0, 'drone1': 100.0})
+
+    same = n._local_retarget(robots, fr)
+    check('같은 목표면 다시 세지 않는다', same == [] and n.stats['new_targets'] == 2)
+
+    n2 = N()
+    n2.anchor, n2.target, n2.min_goal_dist = {}, {}, 4.0
+    n2.stats, n2.no_prog_since = {'new_targets': 0, 'retargets': 0}, {}
+    n2._sim_now = lambda: 0.0
+    check('앵커가 없으면(첫 답 전) 아무것도 안 한다', n2._local_retarget(robots, fr) == [])
+    n2.anchor = {'ugv1': (20.0, 0.0)}
+    check('구역에 후보가 없으면 그대로',
+          n2._local_retarget([{'id': 'ugv1', 'x': 19.0, 'y': 0.0}],
+                             [{'x': 20.0, 'y': 0.0}]) == [])
+
+
 def main():
     for fn in (test_extract_frontiers, test_opt_and_bounds, test_clamp_and_targets,
                test_chat_truncation, test_assign_by_llm, test_async_llm,
-               test_resend_while_pending, test_record_and_export):
+               test_resend_while_pending, test_local_retarget,
+               test_record_and_export):
         print(f'\n--- {fn.__name__} ---')
         fn()
     print('\n전부 통과' if not FAILS else f'\n실패 {len(FAILS)}건: {FAILS}')
