@@ -202,12 +202,16 @@ def test_chat_truncation():
             choices=[types.SimpleNamespace(message=msg, finish_reason=finish)],
             usage=types.SimpleNamespace(prompt_tokens=900, completion_tokens=1024))
 
-    def node_with(seq):
+    sent_kwargs = []
+
+    def node_with(seq, thinking=False):
         n = N()
         n._calls, budgets = [], []
+        n.llm_thinking = thinking
 
         def create(**kw):
             budgets.append(kw['max_tokens'])
+            sent_kwargs.append(kw)
             return seq.pop(0)
 
         n.client = types.SimpleNamespace(
@@ -237,6 +241,19 @@ def test_chat_truncation():
         check('잘림이 아닌 빈 본문은 즉시 예외', False)
     except ValueError:
         check('잘림이 아닌 빈 본문은 즉시 예외', b == [2048])
+
+    # 사고 끄기가 실제로 요청에 실리는가 — 실측에서 17.9초/잘림 vs 2.5초/정상을 가른 지점
+    sent_kwargs.clear()
+    n, _ = node_with([resp('{"a": 1}', 'stop')], thinking=False)
+    n._chat('p')
+    check('사고 끔 → chat_template_kwargs 로 진짜 끈다',
+          sent_kwargs[-1].get('extra_body') == {'chat_template_kwargs': {'thinking': False}},
+          str(sent_kwargs[-1].get('extra_body')))
+    sent_kwargs.clear()
+    n, _ = node_with([resp('{"a": 1}', 'stop')], thinking=True)
+    n._chat('p')
+    check('사고 켬 → 추가 인자 없음 (지원 안 하는 제공자용)',
+          sent_kwargs[-1].get('extra_body') is None)
 
 
 # ------------------------------------------------------------------ 기록 / 내보내기
@@ -405,7 +422,7 @@ def test_resend_while_pending():
 def test_local_retarget():
     """답 사이 재조준: 교사가 나눈 구역은 지키고, 그 안에서 가까운 목표로 갱신한다."""
     node = os.path.join(SRC, 'frontier_allocator_node.py')
-    N = shell(['_local_retarget', '_owner_of'], node, {'math': math})
+    N = shell(['_local_retarget', '_owner_of', '_region_fresh'], node, {'math': math})
     n = N()
     n.anchor = {'ugv1': (20.0, 0.0), 'drone1': (-20.0, 0.0)}
     n.target = {'ugv1': (20.0, 0.0), 'drone1': (-20.0, 0.0)}

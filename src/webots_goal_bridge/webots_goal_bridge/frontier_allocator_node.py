@@ -153,6 +153,12 @@ class FrontierAllocatorNode(Node):
         # 같은 답을 **29초 -> 9초**로 낸다(실측). 다른 제공자면 빈 문자열로 둔다.
         self.declare_parameter('system_prompt', 'detailed thinking off')
         self.declare_parameter('llm_retries', 3)
+        # 🚨 **사고(reasoning)를 진짜로 끈다.** 시스템 메시지 'detailed thinking off' 는 부탁일
+        #    뿐이라 추론이 그대로 나온다. NIM 의 chat_template_kwargs 로 끄면 다르다 —
+        #    실측(같은 프롬프트): 부탁 17.9초·추론 5581자·잘림·무효
+        #                        템플릿  2.5초·추론    0자·정상·유효
+        #    잘림(65~85%)·폴백·늦은 주기가 전부 여기서 파생됐다. 지원하지 않는 제공자면 true.
+        self.declare_parameter('llm_thinking', False)
         # 🚨 비동기 계획. 교사가 생각하는 동안 **로봇을 세우지 않는다.**
         #    동기(false)로 두면 주기(60초)보다 긴 호출(실측 103~176초) 때문에 로봇이 목표를
         #    다 쓰고 서 있게 되고, 탐사 성능이 판단 품질이 아니라 지연을 재게 된다.
@@ -163,7 +169,14 @@ class FrontierAllocatorNode(Node):
         #    갱신한다. 베이스라인이 60초마다 하던 보정을 되살리는 것이다.
         #    근거: 탐사점 1개당 이동이 베이스라인 10.9 m vs LLM 17.4 m 였다. 판단이 드물면
         #    목표를 오래 붙들어 한 점이 비싸진다.
-        self.declare_parameter('llm_retarget', True)
+        #    ⚠️ 기본은 끈다. 사고를 끄면 60초마다 판단할 수 있어 보정이 필요 없고,
+        #       실측에서 오히려 해로웠다 (탐사점 11.5 -> 21.0 개, 이동 192 -> 246 m).
+        self.declare_parameter('llm_retarget', False)
+        # 🚨 교사를 **구역 분배자로만** 쓴다. 목표 좌표는 언제나 "자기 구역 안 최근접" 규칙
+        #    하나가 정한다. 섞어 쓰면 두 결정이 다른 박자로 싸운다 — 실측: 교사 답이 올 때마다
+        #    목표가 평균 14~16 m 먼 곳으로 튀어, 대기 중 재조준이 벌어 둔 이득을 까먹었다
+        #    (탐사점 11.5 -> 21.0 개, 이동 192 -> 246 m).
+        self.declare_parameter('llm_anchor_only', False)
 
         self.period = float(self.get_parameter('period').value)
         self.strategy = str(self.get_parameter('strategy').value)
@@ -179,6 +192,8 @@ class FrontierAllocatorNode(Node):
         self.explore_bounds = parse_bounds(str(self.get_parameter('explore_bounds').value))
         self.llm_async = bool(self.get_parameter('llm_async').value)
         self.llm_retarget = bool(self.get_parameter('llm_retarget').value)
+        self.llm_anchor_only = bool(self.get_parameter('llm_anchor_only').value)
+        self.llm_thinking = bool(self.get_parameter('llm_thinking').value)
         self.dataset_dir = opt_str(self.get_parameter('dataset_dir').value)
         self.run_tag = re.sub(r'[^A-Za-z0-9_-]+', '-',
                               opt_str(self.get_parameter('run_tag').value))
@@ -282,6 +297,8 @@ class FrontierAllocatorNode(Node):
         messages = ([{'role': 'system', 'content': sys_msg}] if sys_msg else []) \
             + [{'role': 'user', 'content': prompt}]
         budget = int(self.get_parameter('max_tokens').value)
+        # 사고를 끄면 추론 토큰이 0 이라 예산이 남아돈다. 켜져 있을 때만 두 배 재시도가 의미 있다.
+        extra = None if self.llm_thinking else {'chat_template_kwargs': {'thinking': False}}
         for factor in (1, 2):
             t_call = time.monotonic()
             resp = self.client.chat.completions.create(
@@ -289,7 +306,8 @@ class FrontierAllocatorNode(Node):
                 messages=messages,
                 response_format={'type': 'json_object'},
                 max_tokens=budget * factor,
-                temperature=0.2)
+                temperature=0.2,
+                extra_body=extra)
             choice = resp.choices[0]
             body = (choice.message.content or '').strip()
             usage = getattr(resp, 'usage', None)
@@ -327,24 +345,29 @@ class FrontierAllocatorNode(Node):
                 best, who = d, ns
         return who
 
-    def _local_retarget(self, robots, fr):
-        """교사의 배정은 유지하고 목표만 현재 지도로 갱신한다. 바꾼 로봇 이름을 돌려준다.
-
-        🚨 자기 구역 안에서만 고른다. 구역을 무시하고 가장 가까운 것을 잡으면 두 로봇이
-           같은 곳으로 몰려, 교사가 나눈 분업이 사라진다.
-        """
+    def _region_fresh(self, robots, fr):
+        """로봇별 '자기 구역 안에서 가장 가까운 후보'. 앵커가 없으면 빈 dict."""
         if not self.anchor or not fr:
-            return []
-        changed = []
+            return {}
+        out = {}
         for r in robots:
             ns = r['id']
             if ns not in self.anchor:
                 continue
             mine = [f for f in fr if self._owner_of(f) == ns
                     and math.hypot(f['x'] - r['x'], f['y'] - r['y']) >= self.min_goal_dist]
-            if not mine:
-                continue
-            f = min(mine, key=lambda f: math.hypot(f['x'] - r['x'], f['y'] - r['y']))
+            if mine:
+                out[ns] = min(mine, key=lambda f: math.hypot(f['x'] - r['x'], f['y'] - r['y']))
+        return out
+
+    def _local_retarget(self, robots, fr):
+        """교사의 배정은 유지하고 목표만 현재 지도로 갱신한다. 바꾼 로봇 이름을 돌려준다.
+
+        🚨 자기 구역 안에서만 고른다. 구역을 무시하고 가장 가까운 것을 잡으면 두 로봇이
+           같은 곳으로 몰려, 교사가 나눈 분업이 사라진다.
+        """
+        changed = []
+        for ns, f in self._region_fresh(robots, fr).items():
             tgt, prev = (f['x'], f['y']), self.target.get(ns)
             if prev is None or math.hypot(tgt[0] - prev[0], tgt[1] - prev[1]) > 0.5:
                 self.stats['new_targets'] += 1
@@ -589,6 +612,9 @@ class FrontierAllocatorNode(Node):
         if teacher is not None:
             # 교사가 나눈 구역을 기억한다. 다음 답이 올 때까지 이 기준으로 재조준한다.
             self.anchor = {ns: (f['x'], f['y']) for ns, f in fresh.items()}
+            if self.llm_anchor_only:
+                # 목표 좌표는 교사가 아니라 **같은 지역 규칙**이 정한다 (출처를 하나로).
+                fresh = self._region_fresh(robots, fr) or fresh
 
         self._round_events = []
         sent = {}
@@ -748,6 +774,7 @@ class FrontierAllocatorNode(Node):
             'temperature': 0.2, 'llm_retries': g('llm_retries'),
             'period': self.period, 'min_separation': self.min_sep,
             'llm_async': self.llm_async, 'llm_retarget': self.llm_retarget,
+            'llm_anchor_only': self.llm_anchor_only, 'llm_thinking': self.llm_thinking,
             'min_goal_dist': self.min_goal_dist, 'max_candidates': self.max_cand,
             'giveup_rounds': self.giveup, 'giveup_seconds': self.giveup_sec,
             'explore_bounds': list(self.explore_bounds) if self.explore_bounds else None,
